@@ -1,0 +1,2152 @@
+{
+  "name": "Job hunter · búsqueda y scoring",
+  "nodes": [
+    {
+      "id": "92b74b77-df40-4ae5-9277-7f91bb88d0e4",
+      "name": "Búsqueda 08:00 y 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        600
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8,18 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aa659b35-829d-4408-ac75-7c5a8989a2cd",
+      "name": "Resumen diario 19:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1500
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 19 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b5f0768c-2b97-4d88-952a-f1db3155d377",
+      "name": "Webhook CV adaptado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1800
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "cv-adaptado",
+        "authentication": "basicAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "904b3fc6-ddd8-4a9c-b22e-e3cd41f51f9f",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "jh-basic",
+          "name": "Basic auth webhook CV (job hunter)"
+        }
+      }
+    },
+    {
+      "id": "8798b1b9-6451-42a6-a602-365192bcadfc",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1500
+      ],
+      "parameters": {
+        "jsCode": "// ============ CONFIGURACIÓN (lo único que tienes que editar) ============\n// Aquí NO van claves: las API keys viven en n8n Credentials.\nconst CONFIG = {\n  SHEET_ID: 'TU_SHEET_ID',\n  TELEGRAM_CHAT_ID: 'TU_CHAT_ID',\n  // URL con la que tu móvil llega a n8n. Telegram NO acepta IPs en botones:\n  // usa un nombre, p.ej. http://192-168-1-50.nip.io:5678 o tu nombre de Tailscale.\n  N8N_BASE_URL: 'http://192-168-1-50.nip.io:5678',\n  CV_ADAPTER_WORKFLOW_ID: '', // ID del workflow que genera el CV adaptado (vacío = solo aviso)\n\n  SCORE_ALERTA: 75,\n  MAX_SCORING_POR_EJECUCION: 40, // tope de llamadas a Claude por ejecución\n  MAX_DIAS: 7,\n  SALARIO_MIN_NETO_MES: 2000,\n  SALARIO_TOLERANCIA: 0.92, // descarta solo si el neto estimado < 2500 * 0.92 (claramente por debajo)\n  MODELO: 'claude-haiku-5-5',\n\n  JSEARCH_CUOTA_MES: 190, // plan gratuito = 200\n  REMOTIVE_MAX_DIA: 4,\n  INFOJOBS_API_ACTIVA: false, // true si tienes client_id/secret de developer.infojobs.net\n  APIFY_INFOJOBS_ACTIVO: false, // true cuando elijas actor en Apify Store\n  APIFY_INFOJOBS_ACTOR: '', // formato usuario~actor\n  APIFY_INFOJOBS_INPUT: { keyword: 'analista operaciones automatización', province: 'barcelona', maxItems: 30 },\n\n  // 6 queries de JSearch: 3 por ejecución (mañana / tarde) -> 180/mes\n  JSEARCH_QUERIES: {\n    manana: [\n      { query: 'AI automation specialist OR n8n OR automatización IA in Barcelona, Spain' },\n      { query: 'operations analyst OR business analyst OR process improvement in Barcelona, Spain' },\n      { query: 'customer success manager in Barcelona, Spain' },\n    ],\n    tarde: [\n      { query: 'AI automation OR workflow automation OR automatización remote Spain', work_from_home: true },\n      { query: 'analista de operaciones OR analista de negocio OR mejora de procesos Barcelona' },\n      { query: 'product owner junior OR IT business partner OR automatització in Barcelona, Spain' },\n    ],\n  },\n  ADZUNA_QUERIES: [\n    { where: 'Barcelona', what_or: 'automation automatización automatització n8n zapier rpa llm workflow' },\n    { where: 'Barcelona', what_or: 'operations analyst analista operaciones business negocio procesos improvement' },\n    { where: 'Barcelona', what_or: 'customer success product owner business partner' },\n    { what: 'remoto', what_or: 'automatización automation n8n analista operaciones business success' },\n  ],\n  INFOJOBS_QUERIES: ['automatización', 'analista de operaciones', 'business analyst', 'customer success'],\n\n  // Keywords EN / ES / CA por puesto (para filtros y para el prompt de scoring)\n  KEYWORDS: {\n    '1': ['AI automation', 'automation specialist', 'workflow automation', 'n8n', 'Make', 'Zapier', 'LLM', 'RPA', 'low-code',\n          'automatización', 'automatización con IA', 'especialista en automatización',\n          'automatització', 'automatització amb IA'],\n    '2': ['operations analyst', 'business analyst', 'process improvement', 'business operations', 'revenue operations',\n          'analista de operaciones', 'analista de negocio', 'mejora de procesos', 'mejora continua',\n          \"analista d'operacions\", 'analista de negoci', 'millora de processos'],\n    '3': ['customer success', 'customer success manager', 'onboarding specialist', 'implementation specialist',\n          'éxito del cliente', 'gestor de clientes', \"èxit del client\"],\n    'bonus': ['product owner', 'junior product owner', 'IT business partner', 'propietario de producto', 'responsable de producto'],\n  },\n\n  // Regex (sin acentos, minúsculas) que el TÍTULO debe cumplir para pasar\n  RELEVANTES_TITULO: [\n    'automat', 'n8n', '\\\\bmake\\\\b', 'zapier', 'low.?code', 'no.?code', '\\\\brpa\\\\b', 'workflow', '\\\\bllm', 'gen ?ai',\n    '\\\\bai\\\\b', '\\\\bia\\\\b', 'operation', 'operacion', 'operacio', '\\\\bops\\\\b', 'analyst', 'analista', 'process', 'proceso',\n    'proces', 'mejora continua', 'millora', 'customer success', 'client success', '\\\\bcsm\\\\b', 'success manager',\n    'onboarding', 'implementation', 'implantacion', 'product owner', 'business partner', 'revops', 'customer experience',\n    '\\\\bcx\\\\b', 'transformation', 'transformacion', 'efficiency', 'eficiencia',\n  ],\n  // Fuera siempre (título)\n  EXCLUIR_TITULO: [\n    'practicas', 'practiques', 'becari', 'intern\\\\b', 'internship', 'trainee', 'werkstudent', 'working student', 'minijob',\n    'director', 'head of', '\\\\bstaff\\\\b', 'architect', 'arquitect', '\\\\bvp\\\\b', 'vice president', 'chief', 'principal',\n    '\\\\b(german|deutsch|french|italian|dutch|portuguese|nordic|polish|swedish|danish|norwegian|finnish|japanese|korean|mandarin|chinese|arabic|hebrew|turkish|greek|czech|hungarian|romanian|georgian|russian|ukrainian)\\\\b',\n    'ai trainer', 'trainers network', 'annotator', 'writer', 'copywriter',\n    '\\\\(m/w/d\\\\)', 'account executive', 'sales (manager|representative|executive)', '\\\\bsdr\\\\b', '\\\\bbdr\\\\b',\n    'telemarketing', 'teleoperador', 'call center', 'customer (support|service) (agent|representative)', 'atencion al cliente',\n  ],\n  // Fuera salvo que el título también diga automat/n8n/zapier/rpa/workflow/low-code\n  EXCLUIR_TITULO_SALVO_AUTOMATIZACION: [\n    'software engineer', 'developer', 'desarrollador', 'programador', 'backend', 'frontend', 'full.?stack', 'devops',\n    '\\\\bsre\\\\b', 'data engineer', 'machine learning engineer', '\\\\bml engineer', 'data scientist', 'qa engineer', 'tester', '\\\\bengineer',\n  ],\n  ANIOS_EXPERIENCIA_MAX: 7, // descarta si piden 8+ años\n\n  CV_PERFIL: `Alex Ejemplo — candidato ficticio de demostración. Sustituye este texto por tu CV.\nBusca (prioridad): 1) AI Automation Specialist; 2) Operations / Business Analyst; 3) Customer Success.\nUbicación y salario: ajusta los filtros de esta configuración.\nExperiencia (~3 años): analista de operaciones en una empresa ficticia; dashboards, SQL y automatizaciones con n8n y APIs de LLM.\nStack: n8n, Make, Zapier, SQL, Python, Power BI, Google Sheets.\nSin experiencia: Salesforce, SAP.`,\n};\n// ========================================================================\n\n// Detecta qué trigger ha lanzado la ejecución\nconst ejecutado = (n) => { try { return $(n).isExecuted ?? $(n).all().length > 0; } catch (e) { return false; } };\nlet _modo = 'busqueda';\nif (ejecutado('Resumen diario 19:00')) _modo = 'resumen';\nif (ejecutado('Webhook CV adaptado')) _modo = 'cv';\n\nreturn [{ json: { ...CONFIG, _modo, _entrada: $input.first()?.json ?? {} } }];\n"
+      }
+    },
+    {
+      "id": "5f70e415-0077-45fa-b543-b25ca4e54b41",
+      "name": "Modo",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        460,
+        1500
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ae08c355-d9b2-43f0-952f-32a7891cfde6",
+                    "leftValue": "={{ $json._modo }}",
+                    "rightValue": "busqueda",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Búsqueda"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "9b0ef380-77fc-47b2-ba79-4fc2ffb73915",
+                    "leftValue": "={{ $json._modo }}",
+                    "rightValue": "resumen",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Resumen"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "d841cfcf-55d4-4306-a005-9d4e89e5b1e4",
+                    "leftValue": "={{ $json._modo }}",
+                    "rightValue": "cv",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CV adaptado"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1299cd41-ab91-40e9-877a-16133ce7ed83",
+      "name": "Plan JSearch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\n// 3 queries por ejecución, rotando mañana/tarde. Cuota mensual guardada en static data.\nconst c = $('Config').first().json;\nconst st = $getWorkflowStaticData('global');\nconst ahora = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' });\nconst mes = ahora.slice(0, 7);\nconst hora = Number(ahora.slice(11, 13));\nif (!st.jsearch || st.jsearch.mes !== mes) st.jsearch = { mes, usadas: 0 };\n\nlet qs = hora < 13 ? c.JSEARCH_QUERIES.manana : c.JSEARCH_QUERIES.tarde;\nconst libres = c.JSEARCH_CUOTA_MES - st.jsearch.usadas;\nqs = qs.slice(0, Math.max(0, libres));\nif (!qs.length) return [{ json: { _skip: true, fuente: 'jsearch', nota: `cuota mensual agotada (${st.jsearch.usadas}/${c.JSEARCH_CUOTA_MES})` } }];\n\nst.jsearch.usadas += qs.length;\nreturn qs.map((q) => {\n  const p = new QS({ query: q.query, num_pages: '1', country: 'es', date_posted: '3days' });\n  if (q.work_from_home) p.set('work_from_home', 'true');\n  return { json: { _skip: false, fuente: 'jsearch', url: `https://jsearch.p.rapidapi.com/search-v2?${p}`, acumulado_mes: st.jsearch.usadas } };\n});\n"
+      }
+    },
+    {
+      "id": "a10cc16d-8960-4725-8555-57336beb8e77",
+      "name": "¿Saltar JSearch?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "24705ef3-23d1-4783-9730-223db146ba04",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "506f66ea-1c9b-4baf-b0c4-82dfc2ef4e64",
+      "name": "JSearch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        60
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-RapidAPI-Host",
+              "value": "jsearch.p.rapidapi.com"
+            }
+          ]
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "jh-rapidapi",
+          "name": "RapidAPI JSearch (X-RapidAPI-Key)"
+        }
+      }
+    },
+    {
+      "id": "c4b6a47e-f2ff-44af-9545-d599fa5917fa",
+      "name": "Norm JSearch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\nconst plan = $('Plan JSearch').all().map((i) => i.json);\nif (plan[0]?._skip) return [{ json: uso('jsearch', 0, 0, 0, plan[0].nota) }];\nconst out = []; let errores = 0, n = 0;\nfor (const { json: r } of $input.all()) {\n  if (r.error) { errores++; out.push({ json: fallo('jsearch', mensajeError(r.error)) }); continue; }\n  // search-v2 devuelve data.jobs (la v1 devolvía data como array)\n  for (const j of (Array.isArray(r.data) ? r.data : r.data?.jobs) ?? []) {\n    n++;\n    out.push({ json: oferta({\n      fuente: 'jsearch',\n      titulo: j.job_title,\n      empresa: j.employer_name,\n      ubicacion: [j.job_city, j.job_state, j.job_country].filter(Boolean).join(', ') || String(j.job_location ?? '').split('•')[0].trim(),\n      pais: j.job_country || 'ES', // la búsqueda ya va con country=es\n      remoto: j.job_is_remote === true,\n      salario_min: j.job_min_salary, salario_max: j.job_max_salary,\n      salario_periodo: j.job_salary_period ?? '', salario_moneda: j.job_salary_currency ?? '',\n      salario_texto: j.job_salary_string ?? j.job_salary ?? '',\n      fecha: j.job_posted_at_datetime_utc ?? j.job_posted_at_timestamp ?? fechaRelativa(j.job_posted_at),\n      url: j.job_apply_link || j.job_google_link,\n      descripcion: j.job_description,\n    }) });\n  }\n}\nout.push({ json: uso('jsearch', plan.length, n, errores, `acumulado mes: ${plan.at(-1)?.acumulado_mes ?? '?'}`) });\nreturn out;\n"
+      }
+    },
+    {
+      "id": "1d46ec1f-acc9-4bde-8f49-3789da5f3683",
+      "name": "Plan Adzuna",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        190
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\nconst c = $('Config').first().json;\nreturn c.ADZUNA_QUERIES.map((q) => {\n  const p = new QS({ results_per_page: '50', max_days_old: String(c.MAX_DIAS), sort_by: 'date', 'content-type': 'application/json' });\n  for (const [k, v] of Object.entries(q)) p.set(k, v);\n  if (q.where) p.set('distance', '30');\n  return { json: { _skip: false, fuente: 'adzuna', url: `https://api.adzuna.com/v1/api/jobs/es/search/1?${p}` } };\n});\n"
+      }
+    },
+    {
+      "id": "6a28caf5-b0c8-45fc-a946-1a08a3b7d351",
+      "name": "Adzuna",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        190
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2500
+            }
+          }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "jh-adzuna",
+          "name": "Adzuna (app_id + app_key)"
+        }
+      }
+    },
+    {
+      "id": "c28f87eb-6375-43ef-b480-c40d59d1a202",
+      "name": "Norm Adzuna",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        190
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\nconst plan = $('Plan Adzuna').all();\nconst out = []; let errores = 0, n = 0;\nfor (const { json: r } of $input.all()) {\n  if (r.error) { errores++; out.push({ json: fallo('adzuna', mensajeError(r.error)) }); continue; }\n  for (const j of r.results ?? []) {\n    n++;\n    const predicho = String(j.salary_is_predicted) === '1'; // salario estimado por Adzuna: no lo usamos para descartar\n    out.push({ json: oferta({\n      fuente: 'adzuna',\n      titulo: stripHtml(j.title),\n      empresa: j.company?.display_name,\n      ubicacion: j.location?.display_name,\n      pais: 'ES',\n      salario_min: predicho ? null : j.salary_min, salario_max: predicho ? null : j.salary_max,\n      salario_periodo: 'year', salario_moneda: 'EUR',\n      salario_texto: predicho || !j.salary_min ? '' : `${j.salary_min}-${j.salary_max} €/año`,\n      fecha: j.created,\n      url: j.redirect_url,\n      descripcion: stripHtml(j.description),\n    }) });\n  }\n}\nout.push({ json: uso('adzuna', plan.length, n, errores) });\nreturn out;\n"
+      }
+    },
+    {
+      "id": "689cd73f-b312-4334-912e-6ab79d147729",
+      "name": "Plan InfoJobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        380
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\n// Usa la API oficial si está activa; si no, el actor de Apify; si ninguno, se salta.\nconst c = $('Config').first().json;\nconst ahora = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' });\nif (c.INFOJOBS_API_ACTIVA) {\n  return c.INFOJOBS_QUERIES.map((q) => ({ json: { _skip: false, modo: 'api', fuente: 'infojobs',\n    url: `https://api.infojobs.net/api/9/offer?${new QS({ q, province: 'barcelona', sinceDate: '_7_DAYS', maxResults: '50', order: 'updated-desc' })}` } }));\n}\n// Apify solo en la ejecución de la mañana para no gastar crédito\nif (c.APIFY_INFOJOBS_ACTIVO && c.APIFY_INFOJOBS_ACTOR && Number(ahora.slice(11, 13)) < 13) {\n  return [{ json: { _skip: false, modo: 'apify', fuente: 'infojobs',\n    url: `https://api.apify.com/v2/acts/${c.APIFY_INFOJOBS_ACTOR}/run-sync-get-dataset-items?timeout=180`,\n    input: c.APIFY_INFOJOBS_INPUT } }];\n}\nreturn [{ json: { _skip: true, fuente: 'infojobs', nota: c.APIFY_INFOJOBS_ACTIVO ? 'Apify solo por la mañana' : 'desactivado (llegan por alertas de Gmail)' } }];\n"
+      }
+    },
+    {
+      "id": "6d270fa6-2d6f-42ba-940c-a0ac1e924fe9",
+      "name": "¿Saltar InfoJobs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1000,
+        380
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "37edcbb0-020f-45db-9f92-846fa2d532e3",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "e9e7432d-ce61-48ea-ba78-0ca860d5ce2e",
+      "name": "¿API oficial?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        470
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "be4a12aa-3a9e-47c1-ae4d-9da5417105df",
+              "leftValue": "={{ $json.modo }}",
+              "rightValue": "api",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "rightValue": "api"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "8098dfd0-ec39-4eca-9fcd-a048f5340761",
+      "name": "InfoJobs API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        410
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "jh-infojobs",
+          "name": "InfoJobs API (client_id / client_secret)"
+        }
+      }
+    },
+    {
+      "id": "fbb1e651-a015-4a1e-ad5d-9e42fce5f11c",
+      "name": "Apify InfoJobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        530
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 200000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.input) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "jh-apify",
+          "name": "Apify (Authorization: Bearer)"
+        }
+      }
+    },
+    {
+      "id": "f9801421-9498-4fdb-8330-75e9b2b607da",
+      "name": "Norm InfoJobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        380
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\n// Acepta la respuesta de la API oficial ({offers:[...]}) o items sueltos de un actor de Apify (nombres de campo variables)\nconst plan = $('Plan InfoJobs').all().map((i) => i.json);\nif (plan[0]?._skip) return [{ json: uso('infojobs', 0, 0, 0, plan[0].nota) }];\nconst v = (o, ...ks) => { for (const k of ks) { const x = k.split('.').reduce((a, p) => a?.[p], o); if (x !== undefined && x !== null && x !== '') return x?.value ?? x; } return ''; };\nconst out = []; let errores = 0, n = 0;\nfor (const { json: r } of $input.all()) {\n  if (r.error) { errores++; out.push({ json: fallo('infojobs', mensajeError(r.error)) }); continue; }\n  for (const j of r.offers ?? [r]) {\n    if (!v(j, 'title', 'titulo', 'jobTitle')) continue;\n    n++;\n    const tele = String(v(j, 'teleworking', 'teletrabajo', 'workMode')).toLowerCase();\n    out.push({ json: oferta({\n      fuente: 'infojobs',\n      titulo: v(j, 'title', 'titulo', 'jobTitle'),\n      empresa: v(j, 'author.name', 'company', 'companyName', 'empresa'),\n      ubicacion: [v(j, 'city', 'ciudad', 'location'), v(j, 'province', 'provincia')].filter(Boolean).join(', '),\n      pais: 'ES',\n      modalidad: /remot|teletrabajo|solo teletrabajo/.test(tele) ? 'remoto' : /hibrid|híbrid/.test(tele) ? 'híbrido' : undefined,\n      salario_min: v(j, 'salaryMin', 'salaryMinValue'), salario_max: v(j, 'salaryMax', 'salaryMaxValue'),\n      salario_periodo: /mes|month/i.test(v(j, 'salaryPeriod')) ? 'month' : 'year', salario_moneda: 'EUR',\n      salario_texto: v(j, 'salaryDescription', 'salary', 'salario'),\n      fecha: v(j, 'published', 'updated', 'publishedAt', 'date'),\n      url: v(j, 'link', 'url', 'offerUrl'),\n      descripcion: stripHtml(v(j, 'description', 'descripcion', 'requirementMin')),\n    }) });\n  }\n}\nout.push({ json: uso('infojobs', plan.length, n, errores, plan[0]?.modo) });\nreturn out;\n"
+      }
+    },
+    {
+      "id": "fe5ae730-fcd3-47be-b166-4d7705a27917",
+      "name": "Plan Remotive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        630
+      ],
+      "parameters": {
+        "jsCode": "// Remotive pide máx. 4 llamadas/día: 1 por ejecución, con contador diario.\nconst c = $('Config').first().json;\nconst st = $getWorkflowStaticData('global');\nconst dia = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).slice(0, 10);\nif (!st.remotive || st.remotive.dia !== dia) st.remotive = { dia, usadas: 0 };\nif (st.remotive.usadas >= c.REMOTIVE_MAX_DIA) return [{ json: { _skip: true, fuente: 'remotive', nota: 'límite diario alcanzado' } }];\nst.remotive.usadas++;\nreturn [{ json: { _skip: false, fuente: 'remotive', url: 'https://remotive.com/api/remote-jobs?limit=150' } }];\n"
+      }
+    },
+    {
+      "id": "d5a3cd04-8e00-4005-9e83-5aa3f9e04967",
+      "name": "¿Saltar Remotive?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1000,
+        630
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "afb2a17d-5cc3-45ae-8d5b-c3af2a54c934",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "2c4bf587-3ac8-43fc-8801-47f8ac032120",
+      "name": "Remotive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        690
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "0f55c5ca-b6a4-4527-9372-28b4d356d50b",
+      "name": "Norm Remotive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        630
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\nconst plan = $('Plan Remotive').all().map((i) => i.json);\nif (plan[0]?._skip) return [{ json: uso('remotive', 0, 0, 0, plan[0].nota) }];\nconst out = []; let errores = 0, n = 0;\nfor (const { json: r } of $input.all()) {\n  if (r.error) { errores++; out.push({ json: fallo('remotive', mensajeError(r.error)) }); continue; }\n  for (const j of r.jobs ?? []) {\n    n++;\n    out.push({ json: oferta({\n      fuente: 'remotive', titulo: j.title, empresa: j.company_name,\n      ubicacion: j.candidate_required_location, modalidad: 'remoto',\n      salario_texto: j.salary ?? \"\", fecha: j.publication_date,\n      url: j.url, descripcion: stripHtml(j.description),\n    }) });\n  }\n}\nout.push({ json: uso('remotive', plan.length, n, errores) });\nreturn out;\n"
+      }
+    },
+    {
+      "id": "b3147de4-05e7-442e-9f19-ff4098129487",
+      "name": "Plan Arbeitnow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        820
+      ],
+      "parameters": {
+        "jsCode": "return [1, 2].map((page) => ({ json: { _skip: false, fuente: 'arbeitnow', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}` } }));\n"
+      }
+    },
+    {
+      "id": "b6d43dba-659c-4099-905b-280e1a5ee7df",
+      "name": "Arbeitnow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        820
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "d67f8bee-d15b-4653-9131-d3ae3c2a6f91",
+      "name": "Norm Arbeitnow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        820
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\nconst plan = $('Plan Arbeitnow').all();\nconst out = []; let errores = 0, n = 0;\nfor (const { json: r } of $input.all()) {\n  if (r.error) { errores++; out.push({ json: fallo('arbeitnow', mensajeError(r.error)) }); continue; }\n  for (const j of r.data ?? []) {\n    n++;\n    out.push({ json: oferta({\n      fuente: 'arbeitnow', titulo: j.title, empresa: j.company_name, ubicacion: j.location,\n      remoto: j.remote === true, modalidad: j.remote === true ? 'remoto' : undefined,\n      fecha: j.created_at, url: j.url, descripcion: stripHtml(j.description),\n    }) });\n  }\n}\nout.push({ json: uso('arbeitnow', plan.length, n, errores) });\nreturn out;\n"
+      }
+    },
+    {
+      "id": "66a58bbe-4cf0-426b-86a6-3ce46cfd2b1f",
+      "name": "Plan Jobicy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        1010
+      ],
+      "parameters": {
+        "jsCode": "return ['spain', 'europe'].map((geo) => ({ json: { _skip: false, fuente: 'jobicy', url: `https://jobicy.com/api/v2/remote-jobs?count=50&geo=${geo}` } }));\n"
+      }
+    },
+    {
+      "id": "b7b08e64-94e1-44d9-9713-0786c6c18d85",
+      "name": "Jobicy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        1010
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "87191351-2c42-46e1-9eb4-fbb749af16b1",
+      "name": "Norm Jobicy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        1010
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\nconst plan = $('Plan Jobicy').all();\nconst out = []; let errores = 0, n = 0;\nfor (const { json: r } of $input.all()) {\n  if (r.error) { errores++; out.push({ json: fallo('jobicy', mensajeError(r.error)) }); continue; }\n  for (const j of r.jobs ?? []) {\n    n++;\n    out.push({ json: oferta({\n      fuente: 'jobicy', titulo: stripHtml(j.jobTitle), empresa: j.companyName, ubicacion: j.jobGeo, modalidad: 'remoto',\n      salario_min: j.salaryMin ?? j.annualSalaryMin, salario_max: j.salaryMax ?? j.annualSalaryMax,\n      salario_periodo: j.salaryPeriod ?? 'year', salario_moneda: j.salaryCurrency ?? '',\n      fecha: j.pubDate, url: j.url, descripcion: stripHtml(j.jobDescription || j.jobExcerpt),\n    }) });\n  }\n}\nout.push({ json: uso('jobicy', plan.length, n, errores) });\nreturn out;\n"
+      }
+    },
+    {
+      "id": "1ca0a661-99c6-4741-a58c-de16c681a941",
+      "name": "Plan Gmail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        1200
+      ],
+      "parameters": {
+        "jsCode": "// Busca alertas desde la última ejecución (marca guardada en static data).\nconst st = $getWorkflowStaticData('global');\nconst ahora = Math.floor(Date.now() / 1000);\nconst desde = st.gmailDesde ?? ahora - 2 * 86400;\nst.gmailDesde = ahora;\nconst remitentes = ['jobalerts-noreply@linkedin.com', 'jobs-noreply@linkedin.com', 'infojobs.net', 'glassdoor.com', 'glassdoor.es'];\nreturn [{ json: { fuente: 'gmail', q: `(${remitentes.map((r) => `from:${r}`).join(' OR ')}) after:${desde}` } }];\n"
+      }
+    },
+    {
+      "id": "04930873-7ffb-47fe-8fdb-501a3031082c",
+      "name": "Gmail: alertas",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1000,
+        1200
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 25,
+        "simple": false,
+        "filters": {
+          "q": "={{ $json.q }}"
+        },
+        "options": {
+          "downloadAttachments": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "jh-gmail",
+          "name": "Gmail (job hunter)"
+        }
+      },
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "9de928b0-b1fe-48e5-9387-8f898797857f",
+      "name": "Preparar correos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        1200
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\n// Sustituye cada enlace por [Ln] para que Claude devuelva la referencia y no tenga que copiar URLs largas.\nconst c = $('Config').first().json;\nconst correos = $input.all().map((i) => i.json).filter((m) => m.id && (m.html || m.text));\nif (!correos.length) return [{ json: { _skip: true } }];\nconst RUIDO = /unsubscribe|darse de baja|baja|settings|preferenc|privacy|privacidad|help|ayuda|premium|app-store|play\\.google|apps\\.apple|feed\\/|\\/mynetwork|\\/notifications/i;\nconst schema = {\n  type: 'object', additionalProperties: false, required: ['ofertas'],\n  properties: { ofertas: { type: 'array', items: {\n    type: 'object', additionalProperties: false,\n    required: ['titulo', 'empresa', 'ubicacion', 'modalidad', 'salario', 'link_ref'],\n    properties: {\n      titulo: { type: 'string' }, empresa: { type: 'string' }, ubicacion: { type: 'string' },\n      modalidad: { type: 'string', enum: ['remoto', 'híbrido', 'presencial', 'desconocida'] },\n      salario: { type: 'string' }, link_ref: { type: 'string' },\n    } } } },\n};\nreturn correos.map((m) => {\n  const links = {}; let n = 0;\n  let html = String(m.html || m.textAsHtml || '');\n  html = html.replace(/<a\\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>([\\s\\S]*?)<\\/a>/gi, (_, href, txt) => {\n    if (RUIDO.test(href)) return txt;\n    const ref = `L${++n}`; links[ref] = href.replace(/&amp;/g, '&');\n    return `${txt} [${ref}]`;\n  });\n  const texto = (html ? stripHtml(html) : String(m.text)).slice(0, 15000);\n  return { json: {\n    _skip: false,\n    remitente: typeof m.from === 'object' ? m.from?.text : m.from,\n    asunto: m.subject, fecha: m.date, links,\n    body: {\n      model: c.MODELO, max_tokens: 6000,\n      output_config: { effort: 'low', format: { type: 'json_schema', schema } },\n      system: 'Extraes ofertas de empleo de correos de alertas (LinkedIn, InfoJobs, Glassdoor). Devuelve solo ofertas concretas de empleo. Cada oferta va seguida de una referencia de enlace como [L3]: devuelve esa referencia en link_ref (ej. \"L3\"), la del enlace de la oferta, no la de la empresa. Si un dato no aparece, usa cadena vacía. No inventes.',\n      messages: [{ role: 'user', content: `Remitente: ${m.from?.text ?? m.from}\\nAsunto: ${m.subject}\\n\\n${texto}` }],\n    },\n  } };\n});\n"
+      }
+    },
+    {
+      "id": "48bafba1-810e-42a9-8489-f03f778a437c",
+      "name": "¿Sin correos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1360,
+        1200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "450224a5-13b2-400c-b908-e03c14f8156e",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "01f05535-c343-48dd-b3df-2f0dbd763bf5",
+      "name": "Claude: extraer ofertas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1420,
+        1290
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "options": {
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 2,
+              "batchInterval": 1000
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "anthropicApi": {
+          "id": "jh-anthropic",
+          "name": "Anthropic (job hunter)"
+        }
+      }
+    },
+    {
+      "id": "73e583e1-aca9-4cdb-b3f1-39b37e4ef2e2",
+      "name": "Norm Gmail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        1200
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\n// Recibe la respuesta de Claude (o el item _skip si no hubo correos)\nconst entrada = $input.all();\nif (entrada[0]?.json._skip) return [{ json: uso('gmail', 1, 0, 0, 'sin alertas nuevas') }];\nconst prep = $('Preparar correos').all().map((i) => i.json);\nconst out = []; let errores = 0, n = 0, tin = 0, tout = 0;\nentrada.forEach(({ json: r }, i) => {\n  const m = prep[i] ?? {};\n  if (r.error) { errores++; out.push({ json: fallo('gmail', `extracción \"${m.asunto}\": ${mensajeError(r.error)}`) }); return; }\n  tin += r.usage?.input_tokens ?? 0; tout += r.usage?.output_tokens ?? 0;\n  let datos;\n  try { datos = JSON.parse((r.content ?? []).find((b) => b.type === 'text')?.text ?? '{}'); }\n  catch (e) { errores++; out.push({ json: fallo('gmail', `JSON inválido en \"${m.asunto}\"`) }); return; }\n  const remitente = String(m.remitente ?? '').toLowerCase();\n  const fuente = remitente.includes('linkedin') ? 'linkedin' : remitente.includes('infojobs') ? 'infojobs' : remitente.includes('glassdoor') ? 'glassdoor' : 'gmail';\n  for (const o of datos.ofertas ?? []) {\n    if (!o.titulo) continue;\n    n++;\n    out.push({ json: oferta({\n      fuente: `${fuente} (alerta)`, titulo: o.titulo, empresa: o.empresa, ubicacion: o.ubicacion,\n      modalidad: o.modalidad === 'desconocida' ? undefined : o.modalidad,\n      salario_texto: o.salario, fecha: m.fecha, url: m.links?.[o.link_ref] ?? '',\n      descripcion: '', idioma: 'desconocido',\n    }) });\n  }\n});\nout.push({ json: uso('gmail', prep.length, n, errores, `correos: ${prep.length}`) });\nif (prep.length) out.push({ json: { _tipo: 'tokens', fuente: 'claude-extraccion', llamadas: prep.length, input_tokens: tin, output_tokens: tout } });\nreturn out;\n"
+      }
+    },
+    {
+      "id": "1e4b50a3-af39-4d75-933c-8198cf2b08a8",
+      "name": "Unir fuentes",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1840,
+        600
+      ],
+      "parameters": {
+        "numberInputs": 7
+      }
+    },
+    {
+      "id": "84960c23-0816-4ccf-b6d3-bd3088cea6db",
+      "name": "Leer ofertas guardadas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2080,
+        600
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Config\").first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Ofertas"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jh-sheets",
+          "name": "Google Sheets (job hunter)"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "5d56e16a-b9c3-4a10-b731-479b0245ec10",
+      "name": "Dedupe y filtros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2300,
+        600
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\n// ---- salario: bruto anual -> neto (aprox. Barcelona, soltero, sin hijos, 12 pagas) ----\nconst TABLA_NETO = [[15000, 12900], [20000, 16300], [25000, 19900], [30000, 23200], [35000, 26400], [40000, 29600],\n  [45000, 32600], [50000, 35400], [60000, 40900], [70000, 46100], [80000, 51200], [100000, 61500], [150000, 86000]];\nfunction netoAnual(bruto) {\n  if (bruto <= TABLA_NETO[0][0]) return bruto * TABLA_NETO[0][1] / TABLA_NETO[0][0];\n  for (let i = 1; i < TABLA_NETO.length; i++) {\n    const [b0, n0] = TABLA_NETO[i - 1], [b1, n1] = TABLA_NETO[i];\n    if (bruto <= b1) return n0 + (n1 - n0) * (bruto - b0) / (b1 - b0);\n  }\n  return bruto * 0.57;\n}\nconst TIPO_EUR = { EUR: 1, USD: 0.92, GBP: 1.17, CHF: 1.05 };\n\nfunction parseSalarioTexto(t) {\n  const s = String(t ?? '').replace(/ /g, ' ');\n  if (!s || /per task|por tarea|commission only|solo comisi/i.test(s)) return null;\n  const moneda = /\\$|usd/i.test(s) ? 'USD' : /£|gbp/i.test(s) ? 'GBP' : /chf/i.test(s) ? 'CHF' : 'EUR';\n  const nums = [...s.matchAll(/(\\d{1,3}(?:[.,\\s]\\d{3})+|\\d+(?:[.,]\\d+)?)\\s*(k|mil)?/gi)].map(([, n, k]) => {\n    let v = /[.,\\s]\\d{3}$/.test(n) ? Number(n.replace(/[.,\\s]/g, '')) : Number(n.replace(',', '.'));\n    if (k) v *= 1000;\n    return v;\n  }).filter((v) => v >= 5);\n  if (!nums.length) return null;\n  const periodo = /hour|hora|\\/h\\b|\\bh\\b/i.test(s) ? 'hour' : /day|día|dia\\b/i.test(s) ? 'day'\n    : /month|mes|mensual|\\/m\\b/i.test(s) ? 'month' : /year|año|anual|annual|\\/y|p\\.a\\./i.test(s) ? 'year' : '';\n  return { min: Math.min(...nums), max: Math.max(...nums), periodo, moneda };\n}\n\n// Devuelve { neto_mes_max, bruto_anual_max } o null si no hay datos fiables\nfunction estimaSalario(o) {\n  let d = o.salario_max || o.salario_min\n    ? { min: o.salario_min || o.salario_max, max: o.salario_max || o.salario_min, periodo: String(o.salario_periodo || '').toLowerCase(), moneda: (o.salario_moneda || 'EUR').toUpperCase() }\n    : parseSalarioTexto(o.salario_texto);\n  if (!d || !d.max) return null;\n  const mult = { hour: 1760, day: 220, week: 46, month: 12, year: 1, yearly: 1, annual: 1, monthly: 12, hourly: 1760 }[d.periodo]\n    ?? (d.max < 400 ? 1760 : d.max < 15000 ? 12 : 1);\n  const bruto = d.max * mult * (TIPO_EUR[d.moneda] ?? 1);\n  if (bruto < 8000 || bruto > 400000) return null; // dato raro: no penalizar\n  return { bruto_anual_max: Math.round(bruto), neto_mes_max: Math.round(netoAnual(bruto) / 12) };\n}\n// ---- fin salario ----\n\n// Entrada: filas ya guardadas en Sheets ($input). Ofertas: salida de \"Unir fuentes\".\nconst c = $('Config').first().json;\nconst st = $getWorkflowStaticData('global'); st.ultimoScoring = null;\nconst todo = $('Unir fuentes').all().map((i) => i.json);\nconst ofertas = todo.filter((x) => x._tipo === 'oferta');\nconst filas = $input.all().map((i) => i.json).filter((r) => r && (r.url || r.clave_dedupe));\nconst vistas = new Set();\nfor (const r of filas) { if (r.url) vistas.add(urlCanonica(r.url)); if (r.clave_dedupe) vistas.add(r.clave_dedupe); if (r.id) vistas.add(`id:${r.id}`); }\n\nconst rx = (lista) => lista.map((p) => new RegExp(p, 'i'));\nconst RELEV = rx(c.RELEVANTES_TITULO), EXCL = rx(c.EXCLUIR_TITULO), EXCL_SALVO = rx(c.EXCLUIR_TITULO_SALVO_AUTOMATIZACION);\nconst AUTOM = /automat|n8n|zapier|\\bmake\\b|\\brpa\\b|workflow|low.?code/i;\nconst BCN = /barcelona|\\bbcn\\b|hospitalet|badalona|sant cugat|cornella|el prat|terrassa|sabadell|mataro|granollers|castelldefels|viladecans|sant boi|esplugues|sant joan despi|\\brubi\\b|cerdanyola|molins de rei|gava|martorell|sant just/;\nconst REMOTO_OK = /espana|spain|espanya|europe|europa|emea|\\bcet\\b|\\bcest\\b|worldwide|anywhere|global|international|^remote$|^remoto$|^$/;\nconst ANIOS = /(\\d{1,2})\\s*\\+?\\s*(?:(?:-|–|a|to)\\s*\\d{1,2}\\s*)?(?:anos|years?|yrs|anys)\\b(?:\\s+(?:de|of|d'))?[^.\\n]{0,40}experi/g;\n\nconst motivo = (o) => {\n  const t = normTxt(o.titulo), loc = normTxt(o.ubicacion);\n  if (EXCL.some((r) => r.test(t))) return 'título excluido';\n  if (!AUTOM.test(t) && EXCL_SALVO.some((r) => r.test(t))) return 'perfil técnico/no objetivo';\n  if (!RELEV.some((r) => r.test(t))) return 'título no relevante';\n  if (o.idioma === 'de' || o.idioma === 'fr') return `oferta en ${o.idioma}`;\n  const enBcn = BCN.test(loc);\n  if (!enBcn) {\n    if (o.modalidad !== 'remoto') return 'fuera de Barcelona y no remoto';\n    if (!(REMOTO_OK.test(loc) || o.pais === 'ES')) return 'remoto fuera de España/Europa';\n  }\n  if (o.fecha) {\n    const dias = (Date.now() - new Date(o.fecha)) / 86400000;\n    if (dias > c.MAX_DIAS) return `antigua (${Math.floor(dias)} días)`;\n  }\n  const anios = [...normTxt(o.descripcion).matchAll(ANIOS)].map((m) => Number(m[1])).filter((n) => n < 30);\n  if (anios.length && Math.min(...anios) > c.ANIOS_EXPERIENCIA_MAX) return `pide ${Math.min(...anios)}+ años`;\n  const sal = estimaSalario(o);\n  if (sal && sal.neto_mes_max < c.SALARIO_MIN_NETO_MES * c.SALARIO_TOLERANCIA) return `salario bajo (~${sal.neto_mes_max} € netos/mes)`;\n  return null;\n};\n\nconst prioridad = (o) => {\n  const t = normTxt(o.titulo);\n  if (AUTOM.test(t) || /\\bai\\b|\\bia\\b|llm|gen ?ai/.test(t)) return 1;\n  if (/operation|operacion|analyst|analista|process|proces|revops/.test(t)) return 2;\n  if (/product owner|business partner/.test(t)) return 2.5;\n  return 3;\n};\n\nconst descartes = {}; const candidatas = new Map();\nfor (const o of ofertas) {\n  if (!o.titulo) continue;\n  if (vistas.has(o.url_canonica) || vistas.has(o.clave_dedupe) || vistas.has(`id:${o.id}`)) { descartes['ya guardada'] = (descartes['ya guardada'] ?? 0) + 1; continue; }\n  const m = motivo(o);\n  if (m) { const k = m.replace(/\\s*\\(.*\\)$/, '').replace(/\\d+\\+ años/, '8+ años'); descartes[k] = (descartes[k] ?? 0) + 1; continue; }\n  const previa = candidatas.get(o.clave_dedupe);\n  const nueva = { ...o, _prioridad: prioridad(o), salario_neto_mes_hard: estimaSalario(o)?.neto_mes_max ?? null };\n  if (previa) {\n    descartes['duplicada entre fuentes'] = (descartes['duplicada entre fuentes'] ?? 0) + 1;\n    const fuentes = [...new Set([...previa.fuente.split('+'), o.fuente])].join('+');\n    // Nos quedamos con la versión con más descripción\n    candidatas.set(o.clave_dedupe, o.descripcion.length > previa.descripcion.length ? { ...nueva, fuente: fuentes } : { ...previa, fuente: fuentes });\n    continue;\n  }\n  candidatas.set(o.clave_dedupe, nueva);\n}\n// Una misma URL puede llegar con distinto título (alertas): quitar repetidas por URL\nconst porUrl = new Set();\nconst lista = [...candidatas.values()].filter((o) => !o.url_canonica || (!porUrl.has(o.url_canonica) && porUrl.add(o.url_canonica)))\n  .sort((a, b) => a._prioridad - b._prioridad || (b.fecha || '').localeCompare(a.fecha || ''));\nconst aPuntuar = lista.slice(0, c.MAX_SCORING_POR_EJECUCION);\n\n// Resumen del filtrado para el log (se lee desde \"Registrar uso\")\n$getWorkflowStaticData('global').ultimoFiltrado = { recibidas: ofertas.length, candidatas: lista.length, puntuadas: aPuntuar.length, descartes };\nreturn aPuntuar.map((o) => ({ json: o }));\n"
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "d6a78778-067c-4a64-9257-f896b7f399eb",
+      "name": "Preparar scoring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2520,
+        440
+      ],
+      "parameters": {
+        "jsCode": "// Construye la petición a Claude Haiku por oferta. El system prompt (CV + rúbrica) es idéntico en todas -> se cachea.\nconst c = $('Config').first().json;\nconst ofertas = $input.all().map((i) => i.json).filter((o) => o.titulo);\nif (!ofertas.length) return [];\nconst kw = Object.entries(c.KEYWORDS).map(([k, v]) => `- ${k}: ${v.join(', ')}`).join('\\n');\nconst system = `Eres un headhunter en Barcelona que evalúa ofertas de empleo para un candidato concreto. Sé exigente y realista.\n\n<cv>\n${c.CV_PERFIL}\n</cv>\n\n<categorias>\n1 = Automatización con IA (n8n, Make, Zapier, APIs de LLM, AI automation specialist)\n2 = Operations Analyst / Business Analyst / Process Improvement\n3 = Customer Success (plan C)\nbonus = Product Owner junior / IT Business Partner\nninguna = no encaja en ninguna\nKeywords de referencia:\n${kw}\n</categorias>\n\n<rubrica>\nscore 0-100 = probabilidad de que merezca la pena postular y pasar el primer filtro:\n- Encaje de funciones y stack con el CV (40 pts). La categoría 1 puntúa más alto a igual encaje; la 3 se queda como mucho en 75 salvo encaje excepcional.\n- Seniority: el candidato tiene ~3,5 años; penaliza fuerte si piden 6+ años o rol de manager de equipo; penaliza prácticas/junior extremo (20 pts).\n- Ubicación/modalidad: Barcelona cualquier modalidad; fuera de Barcelona solo remoto desde España/Europa (15 pts).\n- Idioma: inglés, castellano o catalán OK; si exige otro idioma, score <= 30 (10 pts).\n- Requisitos duros que no tiene (Salesforce, SAP, ingeniería formal, etc.) restan (15 pts).\nCalibración: 85+ encaje casi perfecto; 75-84 postular ya; 60-74 posible; 40-59 flojo; <40 no encaja.\nSi la descripción está vacía o es muy corta (alertas de email), puntúa solo con título/empresa/ubicación, no pases de 80 y dilo en gaps.\n</rubrica>\n\n<salario>\nMínimo del candidato: ${c.SALARIO_MIN_NETO_MES} € netos/mes (≈40-41 k€ brutos/año en Barcelona, 12 pagas).\nsalario_estimado_neto_mes: si la oferta da salario, conviértelo a neto mensual aproximado en España; si no lo da, estima por rol/empresa/ubicación o null si no hay base. No penalices el score por no indicar salario.\nsalario_por_debajo_minimo: true SOLO si la oferta indica explícitamente un salario claramente inferior al mínimo.\n</salario>\n\n<red_flags>\nSeñales de oferta fantasma o dudosa: descripción genérica sin funciones concretas, empresa oculta o \"confidencial\" sin contexto, \"bolsa de candidatos\", republicada constantemente, salario irreal, solo comisiones, pagos por formación, requisitos contradictorios. posible_oferta_fantasma = true si hay 2 o más señales fuertes.\n</red_flags>\n\nResponde en castellano, con frases cortas. motivos_match y gaps: máximo 4 elementos cada uno.`;\n\nconst schema = {\n  type: 'object', additionalProperties: false,\n  required: ['score', 'puesto_categoria', 'motivos_match', 'gaps', 'salario_estimado_neto_mes', 'salario_por_debajo_minimo', 'red_flags', 'posible_oferta_fantasma', 'resumen'],\n  properties: {\n    score: { type: 'integer' },\n    puesto_categoria: { type: 'string', enum: ['1', '2', '3', 'bonus', 'ninguna'] },\n    motivos_match: { type: 'array', items: { type: 'string' } },\n    gaps: { type: 'array', items: { type: 'string' } },\n    salario_estimado_neto_mes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },\n    salario_por_debajo_minimo: { type: 'boolean' },\n    red_flags: { type: 'array', items: { type: 'string' } },\n    posible_oferta_fantasma: { type: 'boolean' },\n    resumen: { type: 'string' },\n  },\n};\n\nreturn ofertas.map((o) => ({ json: {\n  oferta: o,\n  body: {\n    model: c.MODELO,\n    max_tokens: 3000,\n    output_config: { effort: 'low', format: { type: 'json_schema', schema } },\n    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],\n    messages: [{ role: 'user', content:\n`<oferta>\nTítulo: ${o.titulo}\nEmpresa: ${o.empresa || '(no indicada)'}\nUbicación: ${o.ubicacion || '(no indicada)'} · Modalidad: ${o.modalidad}\nSalario publicado: ${o.salario_texto || (o.salario_max ? `${o.salario_min}-${o.salario_max} ${o.salario_moneda} ${o.salario_periodo}` : 'no indicado')}\nFecha: ${o.fecha || '?'} · Fuente: ${o.fuente}\nDescripción:\n${o.descripcion || '(sin descripción: solo datos de la alerta)'}\n</oferta>` }],\n  },\n} }));\n"
+      }
+    },
+    {
+      "id": "e3dece0d-b4c9-4807-a674-a2ded12417c2",
+      "name": "Claude Haiku: scoring",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2740,
+        440
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "options": {
+          "timeout": 120000,
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 2000
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "anthropicApi": {
+          "id": "jh-anthropic",
+          "name": "Anthropic (job hunter)"
+        }
+      }
+    },
+    {
+      "id": "5fc2a674-2fd1-49f8-95e0-19b18b6038c1",
+      "name": "Parsear score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        440
+      ],
+      "parameters": {
+        "jsCode": "// ---- helpers comunes (el build los inyecta al principio de cada nodo Code que los usa) ----\nconst sinAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst normTxt = (s) => sinAcentos(s).toLowerCase().replace(/\\s+/g, ' ').trim();\n\nfunction stripHtml(html) {\n  return String(html ?? '')\n    .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, ' ')\n    .replace(/<br\\s*\\/?>|<\\/(p|div|li|h\\d|tr)>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#39;|&#039;|&rsquo;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/[ \\t]+/g, ' ').replace(/\\n\\s*\\n+/g, '\\n').trim();\n}\n\nfunction detectaModalidad(texto, flagRemoto) {\n  const t = normTxt(texto);\n  if (/hibrid|hybrid/.test(t)) return 'híbrido';\n  if (flagRemoto === true || /\\b(remote|remoto|teletrabajo|teletreball|en remot|work from home|100% remot|fully remote)\\b/.test(t)) return 'remoto';\n  if (/presencial|on-?site|in-?office|en oficina/.test(t)) return 'presencial';\n  return 'desconocida';\n}\n\nfunction detectaIdioma(texto) {\n  const t = ' ' + normTxt(texto).slice(0, 3000) + ' ';\n  const cuenta = (ws) => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);\n  const p = {\n    en: cuenta(['the', 'and', 'with', 'you', 'our', 'will', 'for', 'experience']),\n    es: cuenta(['el', 'los', 'las', 'con', 'para', 'experiencia', 'y', 'una', 'del']),\n    ca: cuenta(['els', 'les', 'amb', 'per', 'experiencia', 'i', 'una', 'del', 'aquesta']),\n    de: cuenta(['und', 'der', 'die', 'mit', 'wir', 'sie', 'fur']),\n    fr: cuenta(['et', 'les', 'avec', 'vous', 'nous', 'pour', 'des']),\n  };\n  const [top, n] = Object.entries(p).sort((a, b) => b[1] - a[1])[0];\n  return n >= 3 ? top : 'desconocido';\n}\n\nfunction aIso(x) {\n  if (x === null || x === undefined || x === '') return '';\n  if (typeof x === 'string' && /T\\d\\d:\\d\\d(:\\d\\d)?$/.test(x)) x += 'Z'; // sin zona = UTC\n  const d = typeof x === 'number' ? new Date(x < 1e12 ? x * 1000 : x) : new Date(x);\n  return isNaN(d) ? '' : d.toISOString();\n}\n\n// \"hace 21 horas\", \"hace 3 días\", \"2 days ago\" -> ISO\nfunction fechaRelativa(t) {\n  const m = normTxt(t).match(/(\\d+)\\s*(minuto|minute|hora|hour|dia|day|semana|week|mes|month)/);\n  if (!m) return '';\n  const ms = { minuto: 6e4, minute: 6e4, hora: 36e5, hour: 36e5, dia: 864e5, day: 864e5, semana: 6048e5, week: 6048e5, mes: 2592e6, month: 2592e6 }[m[2]];\n  return new Date(Date.now() - Number(m[1]) * ms).toISOString();\n}\n\n// Hash corto y estable para ids (FNV-1a 32 bits)\nfunction hash(s) {\n  let h = 0x811c9dc5;\n  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }\n  return h.toString(36);\n}\n\nfunction claveTituloEmpresa(titulo, empresa) {\n  const limpia = (s) => normTxt(s)\n    .replace(/\\((m|f|h|w|d|x)(\\/(m|f|h|w|d|x))*\\)/g, ' ')\n    .replace(/\\b(s\\.?l\\.?u?|s\\.?a\\.?|gmbh|ltd|inc|llc|bv)\\b\\.?/g, ' ')\n    .replace(/[^a-z0-9]+/g, ' ').trim();\n  return `${limpia(titulo)}|${limpia(empresa)}`;\n}\n\n// El sandbox de Code de n8n no tiene URL ni URLSearchParams\nclass QS {\n  constructor(o = {}) { this.o = { ...o }; }\n  set(k, v) { this.o[k] = v; }\n  append(k, v) { this.o[k] = v; }\n  toString() { return Object.entries(this.o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'); }\n}\n\nfunction urlCanonica(u) {\n  if (!u) return '';\n  const txt = String(u).trim();\n  const m = txt.match(/^(https?:)\\/\\/([^/?#]+)([^?#]*)(?:\\?([^#]*))?/i);\n  if (!m) return txt;\n  const [, protocolo, hostRaw, path, query = ''] = m;\n  const host = hostRaw.toLowerCase().replace(/^www\\./, '');\n  const param = (k) => { const r = query.match(new RegExp(`(?:^|&)${k}=([^&]*)`)); return r ? decodeURIComponent(r[1]) : ''; };\n  const li = path.match(/\\/jobs\\/view\\/(?:[^/]*-)?(\\d{6,})/);\n  if (host.endsWith('linkedin.com') && li) return `https://www.linkedin.com/jobs/view/${li[1]}/`;\n  if (host.endsWith('linkedin.com') && param('currentJobId')) return `https://www.linkedin.com/jobs/view/${param('currentJobId')}/`;\n  if (host.includes('glassdoor') && param('jobListingId')) return `https://www.glassdoor.es/job-listing/j?jl=${param('jobListingId')}`;\n  return `${protocolo}//${host}${path.replace(/\\/$/, '')}`;\n}\n\nfunction oferta(o) {\n  const descripcion = String(o.descripcion ?? '').slice(0, 4000);\n  const titulo = String(o.titulo ?? '').trim();\n  const empresa = String(o.empresa ?? '').trim();\n  const clave = claveTituloEmpresa(titulo, empresa);\n  return {\n    _tipo: 'oferta',\n    id: hash(clave),\n    fuente: o.fuente,\n    titulo,\n    empresa,\n    ubicacion: String(o.ubicacion ?? '').trim(),\n    pais: o.pais ?? '',\n    modalidad: o.modalidad ?? detectaModalidad(`${titulo} ${o.ubicacion ?? ''} ${descripcion.slice(0, 1500)}`, o.remoto),\n    salario_texto: o.salario_texto ?? '',\n    salario_min: Number(o.salario_min) || null,\n    salario_max: Number(o.salario_max) || null,\n    salario_periodo: o.salario_periodo ?? '',\n    salario_moneda: o.salario_moneda ?? '',\n    idioma: o.idioma ?? detectaIdioma(`${titulo} ${descripcion}`),\n    fecha: aIso(o.fecha),\n    url: o.url ?? '',\n    url_canonica: urlCanonica(o.url),\n    clave_dedupe: clave,\n    descripcion,\n  };\n}\n\nconst uso = (fuente, peticiones, ofertas, errores, nota = '') =>\n  ({ _tipo: 'uso', fuente, peticiones, ofertas, errores, nota });\nconst fallo = (fuente, mensaje) => ({ _tipo: 'error', fuente, mensaje: String(mensaje).slice(0, 300) });\nconst mensajeError = (e) => e?.message || e?.description || JSON.stringify(e).slice(0, 300);\n// ---- fin helpers ----\n\n// Junta cada respuesta de Claude con su oferta (mismo orden que la entrada del HTTP) y monta la fila de Sheets.\nconst c = $('Config').first().json;\nconst prep = $('Preparar scoring').all().map((i) => i.json);\nconst hoy = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).slice(0, 16);\nconst CAT = { '1': '1 · Automatización IA', '2': '2 · Operations/BA', '3': '3 · Customer Success', bonus: 'Bonus · PO/IT BP', ninguna: 'Ninguna' };\nconst filas = [];\nlet errores = [], tin = 0, tout = 0, tcache = 0;\n$input.all().forEach(({ json: r }, i) => {\n  const o = prep[i]?.oferta;\n  if (!o) return;\n  if (r.error) { errores.push(`${o.titulo}: ${mensajeError(r.error)}`); return; }\n  tin += (r.usage?.input_tokens ?? 0) + (r.usage?.cache_creation_input_tokens ?? 0);\n  tcache += r.usage?.cache_read_input_tokens ?? 0;\n  tout += r.usage?.output_tokens ?? 0;\n  if (r.stop_reason === 'refusal' || r.stop_reason === 'max_tokens') { errores.push(`${o.titulo}: stop_reason=${r.stop_reason}`); return; }\n  let s;\n  try { s = JSON.parse((r.content ?? []).find((b) => b.type === 'text')?.text); }\n  catch (e) { errores.push(`${o.titulo}: JSON inválido`); return; }\n  const descartada = s.salario_por_debajo_minimo === true;\n  filas.push({\n    id: o.id,\n    fecha_detectada: hoy,\n    score: s.score,\n    categoria: CAT[s.puesto_categoria] ?? s.puesto_categoria,\n    titulo: o.titulo,\n    empresa: o.empresa,\n    ubicacion: o.ubicacion,\n    modalidad: o.modalidad,\n    salario_publicado: o.salario_texto || (o.salario_max ? `${o.salario_min ?? ''}-${o.salario_max} ${o.salario_moneda} ${o.salario_periodo}` : ''),\n    salario_estimado_neto_mes: s.salario_estimado_neto_mes ?? '',\n    idioma: o.idioma,\n    fecha_publicacion: o.fecha ? o.fecha.slice(0, 10) : '',\n    fuente: o.fuente,\n    url: o.url,\n    motivos_match: (s.motivos_match ?? []).join(' · '),\n    gaps: (s.gaps ?? []).join(' · '),\n    red_flags: [...(s.red_flags ?? []), ...(s.posible_oferta_fantasma ? ['⚠️ posible oferta fantasma'] : [])].join(' · '),\n    resumen: s.resumen,\n    estado: descartada ? 'Descartado' : 'Por postular',\n    fecha_postulacion: '',\n    fecha_respuesta: '',\n    notas: descartada ? 'Auto: salario por debajo del mínimo' : '',\n    clave_dedupe: o.clave_dedupe,\n  });\n});\n// Coste Haiku 5.5: 0,10 $/MTok entrada, 0,50 $/MTok salida, lectura de caché 0,01 $/MTok\nconst coste = (tin * 0.10 + tcache * 0.01 + tout * 0.50) / 1e6;\n$getWorkflowStaticData('global').ultimoScoring = { llamadas: prep.length, ok: filas.length, errores, tin, tcache, tout, coste };\nreturn filas.map((f) => ({ json: f }));\n"
+      }
+    },
+    {
+      "id": "b3475788-5a04-4873-90c5-3aa184b9f2c2",
+      "name": "Guardar ofertas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3180,
+        440
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Config\").first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Ofertas"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jh-sheets",
+          "name": "Google Sheets (job hunter)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "41e30f22-dfd2-41f7-981e-7cdd1f7c375e",
+      "name": "Preparar alertas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3400,
+        440
+      ],
+      "parameters": {
+        "jsCode": "// Mensajes de Telegram para score >= umbral (texto HTML + URL del botón)\nconst c = $('Config').first().json;\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nreturn $('Parsear score').all().map((i) => i.json).filter((f) => f.estado !== 'Descartado' && !f.red_flags.includes('fantasma') && Number(f.score) >= c.SCORE_ALERTA).map((f) => {\n  const lineas = [\n    `🔥 <b>${f.score}/100</b> · ${esc(f.categoria)}`,\n    `<b>${esc(f.titulo)}</b> — ${esc(f.empresa || '¿empresa?')}`,\n    `📍 ${esc(f.ubicacion || '?')} · ${esc(f.modalidad)}`,\n    `💶 ${esc(f.salario_publicado || 'no indicado')}${f.salario_estimado_neto_mes ? ` (≈${f.salario_estimado_neto_mes} € netos/mes)` : ''}`,\n    f.motivos_match && `✅ ${esc(f.motivos_match)}`,\n    f.gaps && `⚠️ ${esc(f.gaps)}`,\n    f.red_flags && `🚩 ${esc(f.red_flags)}`,\n    `<a href=\"${esc(f.url)}\">Ver oferta</a> · ${esc(f.fuente)}`,\n  ].filter(Boolean);\n  const cvUrl = `${c.N8N_BASE_URL.replace(/\\/$/, '')}/webhook/cv-adaptado?id=${encodeURIComponent(f.id)}`;\n  return { json: { texto: lineas.join('\\n').slice(0, 4000), cv_url: cvUrl } };\n});\n"
+      }
+    },
+    {
+      "id": "e34a5aa0-327f-45ec-b1ea-6e2fa6059595",
+      "name": "Telegram: alerta ≥75",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3620,
+        440
+      ],
+      "parameters": {
+        "chatId": "={{ $(\"Config\").first().json.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true,
+          "appendAttribution": false
+        },
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "📄 Generar CV adaptado",
+                    "additionalFields": {
+                      "url": "={{ $json.cv_url }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "jh-telegram",
+          "name": "Telegram bot (job hunter)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "5f1f1217-2799-41da-aa2d-2b4ad37fb25c",
+      "name": "Telegram: alerta (sin botón)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3840,
+        540
+      ],
+      "parameters": {
+        "chatId": "={{ $(\"Config\").first().json.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $('Preparar alertas').item.json.texto }}\n\n📄 CV adaptado: {{ $('Preparar alertas').item.json.cv_url }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true,
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "jh-telegram",
+          "name": "Telegram bot (job hunter)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "8d59ff56-289a-4495-a42d-18972670cdae",
+      "name": "Registrar uso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2520,
+        640
+      ],
+      "parameters": {
+        "jsCode": "// Filas para la hoja Uso_API: una por fuente, una por uso de Claude (extracción y scoring) y otra con el resumen de filtros.\nconst todo = $('Unir fuentes').all().map((i) => i.json);\nconst f = $getWorkflowStaticData('global').ultimoFiltrado ?? {};\nconst ahora = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).slice(0, 16);\nconst filas = todo.filter((x) => x._tipo === 'uso').map((u) => ({\n  fecha: ahora, ejecucion: $execution.id, fuente: u.fuente, peticiones: u.peticiones,\n  ofertas: u.ofertas, errores: u.errores, tokens_in: '', tokens_out: '', coste_usd: '', nota: u.nota,\n}));\nfor (const t of todo.filter((x) => x._tipo === 'tokens')) {\n  filas.push({ fecha: ahora, ejecucion: $execution.id, fuente: t.fuente, peticiones: t.llamadas, ofertas: '', errores: '',\n    tokens_in: t.input_tokens, tokens_out: t.output_tokens, coste_usd: ((t.input_tokens * 0.10 + t.output_tokens * 0.50) / 1e6).toFixed(4), nota: '' });\n}\nfilas.push({ fecha: ahora, ejecucion: $execution.id, fuente: 'filtros', peticiones: 0, ofertas: f.candidatas ?? 0, errores: '',\n  tokens_in: '', tokens_out: '', coste_usd: '',\n  nota: `recibidas ${f.recibidas ?? 0} → candidatas ${f.candidatas ?? 0} → a puntuar ${f.puntuadas ?? 0}. Descartes: ${Object.entries(f.descartes ?? {}).map(([k, v]) => `${k}: ${v}`).join(', ')}` });\nconst sc = $getWorkflowStaticData('global').ultimoScoring;\nif (sc) filas.push({ fecha: ahora, ejecucion: $execution.id, fuente: 'claude-scoring', peticiones: sc.llamadas, ofertas: sc.ok,\n  errores: sc.errores.length, tokens_in: sc.tin + sc.tcache, tokens_out: sc.tout, coste_usd: sc.coste.toFixed(4), nota: `caché leída: ${sc.tcache} tokens` });\nreturn filas.map((json) => ({ json }));\n"
+      }
+    },
+    {
+      "id": "ddb65160-5bcb-44e9-a000-84e2d4ecffcf",
+      "name": "Guardar uso",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2740,
+        640
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Config\").first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Uso_API"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jh-sheets",
+          "name": "Google Sheets (job hunter)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "187423ef-decb-4bf7-9d36-a62415f35fae",
+      "name": "Errores de la ejecución",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2520,
+        820
+      ],
+      "parameters": {
+        "jsCode": "// Un único mensaje de Telegram con todos los fallos de la ejecución (fuentes + scoring)\nconst fuentes = $('Unir fuentes').all().map((i) => i.json).filter((x) => x._tipo === 'error');\nconst scoring = $getWorkflowStaticData('global').ultimoScoring?.errores ?? [];\nif (!fuentes.length && !scoring.length) return [];\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst lineas = ['⚠️ <b>Job hunter: errores en la ejecución</b>',\n  ...fuentes.map((e) => `• <b>${esc(e.fuente)}</b>: ${esc(e.mensaje)}`),\n  ...scoring.slice(0, 10).map((e) => `• <b>scoring</b>: ${esc(e)}`),\n  'El resto de fuentes se ha procesado con normalidad.'];\nreturn [{ json: { texto: lineas.join('\\n').slice(0, 4000) } }];\n"
+      }
+    },
+    {
+      "id": "26117aee-f6b0-47c8-8793-6a4ceee973a7",
+      "name": "Telegram: errores",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2740,
+        820
+      ],
+      "parameters": {
+        "chatId": "={{ $(\"Config\").first().json.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true,
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "jh-telegram",
+          "name": "Telegram bot (job hunter)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "daff5788-667c-48d1-92c1-51a350651cbd",
+      "name": "Leer ofertas (resumen)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        760,
+        1500
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Config\").first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Ofertas"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jh-sheets",
+          "name": "Google Sheets (job hunter)"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "a8bda259-f105-4626-963c-5e2de443f4c7",
+      "name": "Leer uso (resumen)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1000,
+        1500
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Config\").first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Uso_API"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jh-sheets",
+          "name": "Google Sheets (job hunter)"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "64b30c8e-9f07-4b1a-a619-f999f1db53fb",
+      "name": "Montar resumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        1500
+      ],
+      "parameters": {
+        "jsCode": "// Resumen diario: ofertas detectadas hoy por debajo del umbral + uso de APIs del día\nconst c = $('Config').first().json;\nconst hoy = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).slice(0, 10);\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst filas = $('Leer ofertas (resumen)').all().map((i) => i.json).filter((r) => String(r.fecha_detectada ?? '').startsWith(hoy));\nconst usoHoy = $input.all().map((i) => i.json).filter((r) => String(r.fecha ?? '').startsWith(hoy));\nconst altas = filas.filter((r) => Number(r.score) >= c.SCORE_ALERTA && r.estado !== 'Descartado');\nconst resto = filas.filter((r) => Number(r.score) < c.SCORE_ALERTA && r.estado !== 'Descartado').sort((a, b) => b.score - a.score);\nconst porFuente = {};\nfor (const u of usoHoy) { const k = u.fuente; porFuente[k] ??= { pet: 0, err: 0, coste: 0 }; porFuente[k].pet += Number(u.peticiones) || 0; porFuente[k].err += Number(u.errores) || 0; porFuente[k].coste += Number(u.coste_usd) || 0; }\nconst mes = hoy.slice(0, 7);\nconst jsearchMes = $input.all().map((i) => i.json).filter((r) => r.fuente === 'jsearch' && String(r.fecha ?? '').startsWith(mes)).reduce((n, r) => n + (Number(r.peticiones) || 0), 0);\nconst costeHoy = Object.values(porFuente).reduce((n, v) => n + v.coste, 0);\n\nconst lineas = [`📋 <b>Resumen ${hoy}</b>`, `Nuevas hoy: ${filas.length} · ≥${c.SCORE_ALERTA}: ${altas.length} (ya avisadas) · resto: ${resto.length}`, ''];\nfor (const r of resto.slice(0, 15)) lineas.push(`• <b>${r.score}</b> <a href=\"${esc(r.url)}\">${esc(r.titulo)}</a> — ${esc(r.empresa)} (${esc(r.modalidad)})`);\nif (resto.length > 15) lineas.push(`…y ${resto.length - 15} más en la hoja.`);\nlineas.push('', '<b>Peticiones hoy</b>: ' + Object.entries(porFuente).filter(([k]) => k !== 'filtros').map(([k, v]) => `${k} ${v.pet}${v.err ? ` (⚠️${v.err})` : ''}`).join(' · '));\nlineas.push(`JSearch este mes: ${jsearchMes}/${c.JSEARCH_CUOTA_MES} · Claude hoy: ${costeHoy.toFixed(3)} $`);\nreturn [{ json: { texto: lineas.join('\\n').slice(0, 4000) } }];\n"
+      }
+    },
+    {
+      "id": "84a58dcf-b363-4e32-a54a-503ff0a9d2d4",
+      "name": "Telegram: resumen",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1480,
+        1500
+      ],
+      "parameters": {
+        "chatId": "={{ $(\"Config\").first().json.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "disable_web_page_preview": true,
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "jh-telegram",
+          "name": "Telegram bot (job hunter)"
+        }
+      }
+    },
+    {
+      "id": "39d0e0ac-29bf-4421-8c4d-5204b1b65b76",
+      "name": "Leer ofertas (CV)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        760,
+        1800
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Config\").first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Ofertas"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jh-sheets",
+          "name": "Google Sheets (job hunter)"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "13a9f060-4c3c-45f6-a725-3c06e9e3a6de",
+      "name": "Buscar oferta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        1800
+      ],
+      "parameters": {
+        "jsCode": "// Busca la oferta pedida desde el botón de Telegram\nconst c = $('Config').first().json;\nconst id = String(c._entrada?.query?.id ?? '');\nconst fila = $input.all().map((i) => i.json).find((r) => String(r.id) === id);\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst pagina = (titulo, cuerpo) => `<!doctype html><html lang=\"es\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CV adaptado</title><body style=\"font-family:system-ui;max-width:560px;margin:40px auto;padding:0 16px\"><h2>${titulo}</h2><p>${cuerpo}</p></body></html>`;\nif (!fila) return [{ json: { ok: false, html: pagina('Oferta no encontrada', `No hay ninguna oferta con id <code>${esc(id)}</code> en la hoja.`) } }];\nif (!c.CV_ADAPTER_WORKFLOW_ID) return [{ json: { ok: false, html: pagina('Falta configurar el adaptador', 'Rellena <code>CV_ADAPTER_WORKFLOW_ID</code> en el nodo Config.') } }];\nreturn [{ json: { ok: true, oferta: fila, html: pagina('Generando CV adaptado…', `<b>${esc(fila.titulo)}</b> — ${esc(fila.empresa)}<br>Te llegará por Telegram cuando esté listo. Puedes cerrar esta pestaña.`) } }];\n"
+      }
+    },
+    {
+      "id": "6ba881cd-d082-45aa-9c14-9b9c20f43fcf",
+      "name": "¿Oferta encontrada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1240,
+        1800
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "db97d006-92f8-46a1-8798-7006b48b9f61",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "6fd3a8fd-f8ba-4675-aeb9-239e18ca2d72",
+      "name": "Lanzar adaptador de CV",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1480,
+        1740
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $(\"Config\").first().json.CV_ADAPTER_WORKFLOW_ID }}"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b3d58a7c-92ce-4db8-8850-8cb0f241c130",
+      "name": "Responder al navegador",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1720,
+        1800
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $(\"Buscar oferta\").first().json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "1eea2e54-b48c-42be-837c-51b8227c54c3",
+      "name": "Nota 57",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -260
+      ],
+      "parameters": {
+        "content": "## Job hunter\n1. Edita **Config** (SHEET_ID, TELEGRAM_CHAT_ID, N8N_BASE_URL).\n2. Asigna credenciales en los nodos marcados en rojo.\n3. En Settings → Error workflow elige **Job hunter · errores**.\n4. Activa el workflow.\n\nDetalle en README.md. Nada de postulación automática.",
+        "width": 520,
+        "height": 240,
+        "color": 4
+      }
+    },
+    {
+      "id": "0a5b3f73-23a7-4c00-9165-f9b5295ed6fe",
+      "name": "Nota 58",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        720,
+        -260
+      ],
+      "parameters": {
+        "content": "### Fuentes y límites\n- JSearch: 3 req/ejecución, cuota mensual en static data (190)\n- Adzuna: 4 req/ejecución\n- InfoJobs: API oficial o Apify (desactivado por defecto)\n- Remotive: 1 req/ejecución (máx. 4/día)\n- Arbeitnow: 2 páginas · Jobicy: 2 geos\n- Gmail: alertas desde la última ejecución\nCada fuente falla de forma aislada (onError → continue).",
+        "width": 620,
+        "height": 240,
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Búsqueda 08:00 y 18:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumen diario 19:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook CV adaptado": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Modo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan JSearch": {
+      "main": [
+        [
+          {
+            "node": "¿Saltar JSearch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Saltar JSearch?": {
+      "main": [
+        [
+          {
+            "node": "Norm JSearch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "JSearch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JSearch": {
+      "main": [
+        [
+          {
+            "node": "Norm JSearch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Adzuna": {
+      "main": [
+        [
+          {
+            "node": "Adzuna",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adzuna": {
+      "main": [
+        [
+          {
+            "node": "Norm Adzuna",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan InfoJobs": {
+      "main": [
+        [
+          {
+            "node": "¿Saltar InfoJobs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Saltar InfoJobs?": {
+      "main": [
+        [
+          {
+            "node": "Norm InfoJobs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿API oficial?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿API oficial?": {
+      "main": [
+        [
+          {
+            "node": "InfoJobs API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apify InfoJobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "InfoJobs API": {
+      "main": [
+        [
+          {
+            "node": "Norm InfoJobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify InfoJobs": {
+      "main": [
+        [
+          {
+            "node": "Norm InfoJobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Remotive": {
+      "main": [
+        [
+          {
+            "node": "¿Saltar Remotive?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Saltar Remotive?": {
+      "main": [
+        [
+          {
+            "node": "Norm Remotive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Remotive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remotive": {
+      "main": [
+        [
+          {
+            "node": "Norm Remotive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Arbeitnow": {
+      "main": [
+        [
+          {
+            "node": "Arbeitnow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Arbeitnow": {
+      "main": [
+        [
+          {
+            "node": "Norm Arbeitnow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Jobicy": {
+      "main": [
+        [
+          {
+            "node": "Jobicy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobicy": {
+      "main": [
+        [
+          {
+            "node": "Norm Jobicy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Gmail": {
+      "main": [
+        [
+          {
+            "node": "Gmail: alertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: alertas": {
+      "main": [
+        [
+          {
+            "node": "Preparar correos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar correos": {
+      "main": [
+        [
+          {
+            "node": "¿Sin correos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Sin correos?": {
+      "main": [
+        [
+          {
+            "node": "Norm Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude: extraer ofertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: extraer ofertas": {
+      "main": [
+        [
+          {
+            "node": "Norm Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modo": {
+      "main": [
+        [
+          {
+            "node": "Plan JSearch",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Plan Adzuna",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Plan InfoJobs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Plan Remotive",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Plan Arbeitnow",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Plan Jobicy",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Plan Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Leer ofertas (resumen)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Leer ofertas (CV)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Norm JSearch": {
+      "main": [
+        [
+          {
+            "node": "Unir fuentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Norm Adzuna": {
+      "main": [
+        [
+          {
+            "node": "Unir fuentes",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Norm InfoJobs": {
+      "main": [
+        [
+          {
+            "node": "Unir fuentes",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Norm Remotive": {
+      "main": [
+        [
+          {
+            "node": "Unir fuentes",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Norm Arbeitnow": {
+      "main": [
+        [
+          {
+            "node": "Unir fuentes",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Norm Jobicy": {
+      "main": [
+        [
+          {
+            "node": "Unir fuentes",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Norm Gmail": {
+      "main": [
+        [
+          {
+            "node": "Unir fuentes",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    },
+    "Unir fuentes": {
+      "main": [
+        [
+          {
+            "node": "Leer ofertas guardadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer ofertas guardadas": {
+      "main": [
+        [
+          {
+            "node": "Dedupe y filtros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe y filtros": {
+      "main": [
+        [
+          {
+            "node": "Preparar scoring",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Registrar uso",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Errores de la ejecución",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar scoring": {
+      "main": [
+        [
+          {
+            "node": "Claude Haiku: scoring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Haiku: scoring": {
+      "main": [
+        [
+          {
+            "node": "Parsear score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear score": {
+      "main": [
+        [
+          {
+            "node": "Guardar ofertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar ofertas": {
+      "main": [
+        [
+          {
+            "node": "Preparar alertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar alertas": {
+      "main": [
+        [
+          {
+            "node": "Telegram: alerta ≥75",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: alerta ≥75": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Telegram: alerta (sin botón)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar uso": {
+      "main": [
+        [
+          {
+            "node": "Guardar uso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Errores de la ejecución": {
+      "main": [
+        [
+          {
+            "node": "Telegram: errores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer ofertas (resumen)": {
+      "main": [
+        [
+          {
+            "node": "Leer uso (resumen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer uso (resumen)": {
+      "main": [
+        [
+          {
+            "node": "Montar resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar resumen": {
+      "main": [
+        [
+          {
+            "node": "Telegram: resumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer ofertas (CV)": {
+      "main": [
+        [
+          {
+            "node": "Buscar oferta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar oferta": {
+      "main": [
+        [
+          {
+            "node": "¿Oferta encontrada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Oferta encontrada?": {
+      "main": [
+        [
+          {
+            "node": "Lanzar adaptador de CV",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder al navegador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lanzar adaptador de CV": {
+      "main": [
+        [
+          {
+            "node": "Responder al navegador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Madrid",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
