@@ -11,7 +11,10 @@ ${c.CV_PERFIL}
 
 <categorias>
 1 = Automatización con IA (n8n, Make, Zapier, APIs de LLM, AI automation specialist)
+4 = AI Operations, evaluación de LLM, calidad de datos de IA, AI data program operations
 2 = Operations Analyst / Business Analyst / Process Improvement
+5 = Support/CX Operations, análisis de contact center, WFM, Trust & Safety Operations
+6 = Data Analyst, BI o Reporting con SQL y Power BI
 3 = Customer Success (plan C)
 bonus = Product Owner junior / IT Business Partner
 ninguna = no encaja en ninguna
@@ -21,7 +24,7 @@ ${kw}
 
 <rubrica>
 score 0-100 = probabilidad de que merezca la pena postular y pasar el primer filtro:
-- Encaje de funciones y stack con el CV (40 pts). La categoría 1 puntúa más alto a igual encaje; la 3 se queda como mucho en 75 salvo encaje excepcional.
+- Encaje de funciones y stack con el CV (40 pts). Las categorías 1 y 4 puntúan más alto a igual encaje; en la 6 penaliza si piden ingeniería de datos o estadística avanzada; la 3 se queda como mucho en 75 salvo encaje excepcional.
 - Seniority: el candidato tiene ~3,5 años; penaliza fuerte si piden 6+ años o rol de manager de equipo; penaliza prácticas/junior extremo (20 pts).
 - Ubicación/modalidad: Barcelona cualquier modalidad; fuera de Barcelona solo remoto desde España/Europa (15 pts).
 - Idioma: inglés, castellano o catalán OK; si exige otro idioma, score <= 30 (10 pts).
@@ -47,7 +50,7 @@ const schema = {
   required: ['score', 'puesto_categoria', 'motivos_match', 'gaps', 'salario_estimado_neto_mes', 'salario_por_debajo_minimo', 'red_flags', 'posible_oferta_fantasma', 'resumen'],
   properties: {
     score: { type: 'integer' },
-    puesto_categoria: { type: 'string', enum: ['1', '2', '3', 'bonus', 'ninguna'] },
+    puesto_categoria: { type: 'string', enum: ['1', '2', '3', '4', '5', '6', 'bonus', 'ninguna'] },
     motivos_match: { type: 'array', items: { type: 'string' } },
     gaps: { type: 'array', items: { type: 'string' } },
     salario_estimado_neto_mes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Job Hunter demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&display=swap">
+<style>
+:root{--bg:#fff;--bar:#ECEEEA;--line:#D6D9D3;--soft:#F4F5F2;--ink:#1B1E1B;--dim:#60665F;--accent:#27634B;--on:#fff;--warn:#8A5A00;--bad:#9C2F27;--sel:#E4EEE8;--font:"Libre Franklin","Helvetica Neue",Arial,sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#141714;--bar:#1E221E;--line:#333933;--soft:#1B1F1B;--ink:#E7EAE5;--dim:#9CA39B;--accent:#7CC3A2;--on:#102019;--warn:#E0B060;--bad:#EE9A92;--sel:#23342B;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--font);font-variant-numeric:tabular-nums}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+h1,h2,h3,p{margin:0}
+.top{display:flex;flex-wrap:wrap;align-items:stretch;gap:0 28px;background:var(--bar);border-bottom:1px solid var(--line);padding-inline:16px}
+.brand{font-weight:700;padding-block:11px}
+nav{display:flex;flex-wrap:wrap}
+nav button{background:none;border:0;border-bottom:2px solid transparent;padding:11px 12px 9px;cursor:pointer;color:var(--dim)}
+nav button:hover{color:var(--ink)}
+nav button[aria-current=page]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.status{margin-left:auto;color:var(--dim);padding-block:11px;font-size:13px}
+.note{padding:6px 16px;font-size:12.5px;color:var(--warn);border-bottom:1px solid var(--line)}
+main{padding:20px 16px 48px;max-width:1240px;margin:auto}
+h1{font-size:20px;font-weight:700}
+.sub{color:var(--dim);margin:2px 0 16px}
+h2{font-size:13px;font-weight:700;margin-bottom:6px}
+.btn{background:var(--bg);border:1px solid var(--line);border-radius:3px;padding:5px 10px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--dim)}
+.btn.go{background:var(--accent);border-color:var(--accent);color:var(--on);font-weight:600}
+.btn:disabled{opacity:.5;cursor:default}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12.5px;font-weight:600;color:var(--dim);border-bottom:1px solid var(--dim);padding:5px 10px 5px 0;white-space:nowrap}
+td{padding:7px 10px 7px 0;border-bottom:1px solid var(--line);vertical-align:top}
+td.r,th.r{text-align:right}
+.score{font-weight:700;width:44px}
+.high{color:var(--accent)}
+.mid{color:var(--warn)}
+.low{color:var(--dim)}
+.dim{color:var(--dim)}
+tr.row{cursor:pointer}
+tr.row:hover td{background:var(--soft)}
+tr.row[aria-selected=true] td{background:var(--sel)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:32px;align-items:start}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+.filters input[type=search],.filters select,.fld input,.fld textarea,.fld select,td select{background:var(--bg);border:1px solid var(--line);border-radius:3px;padding:5px 7px}
+.filters input[type=search]{flex:1 1 200px;min-width:0;max-width:340px}
+.filters label{display:flex;gap:6px;align-items:center;color:var(--dim)}
+.side h2{font-size:17px;margin:0}
+.side .co{color:var(--dim);margin-bottom:12px}
+dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 14px;margin:0 0 14px}
+dt{color:var(--dim)}
+dd{margin:0}
+.block{margin-bottom:12px}
+ul{margin:0;padding-left:16px}
+li{margin-bottom:3px}
+.acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.line{padding:8px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.line .s{flex:none;width:30px;font-weight:700}
+.line .i{flex:1;min-width:0}
+.group{margin-bottom:22px}
+.form{display:grid;gap:11px;max-width:620px}
+.fld{display:grid;gap:3px}
+.fld .l{display:flex;justify-content:space-between;gap:10px;font-weight:600;font-size:13px}
+.fld .l span{font-weight:400;color:var(--dim)}
+.fld input,.fld textarea,.fld select{width:100%}
+.fld textarea{min-height:100px;resize:vertical}
+.fld.ask .l span{color:var(--warn)}
+.foot{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.toast{position:fixed;left:16px;bottom:16px;background:var(--ink);color:var(--bg);padding:8px 12px;border-radius:3px;max-width:calc(100vw - 32px);z-index:5}
+@media (max-width:900px){.two{grid-template-columns:minmax(0,1fr)}.status{margin-left:0;padding-top:0;width:100%}.hide{display:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Job Hunter</div>
+  <nav id="nav" aria-label="Sections"></nav>
+  <div class="status">Last run 18:00 · next 08:00</div>
+</header>
+<div class="note">Demo. Every job and company on this page is invented.</div>
+<main id="view"></main>
+<div class="toast" id="toast" hidden role="status"></div>
+<script>
+const JOBS=[
+{id:'a1',score:91,cat:'AI automation',t:'AI Automation Specialist',co:'Brisa Logistics',loc:'Barcelona',mode:'Hybrid',sal:'€42–48k',net:2860,src:'JSearch',ago:'today',ats:'Greenhouse',fill:'High',st:'To apply',m:['Has shipped n8n flows with LLM APIs','Measures KPIs and SLAs in operations','English C1, native Spanish'],g:['Make in production is requested'],f:[],r:'Direct match. The team automates customer support operations with LLMs.'},
+{id:'a2',score:84,cat:'AI automation',t:'Automation Specialist (n8n)',co:'Talleres Mistral',loc:'Remote, Spain',mode:'Remote',sal:'€40–46k',net:2750,src:'Adzuna',ago:'today',ats:'Lever',fill:'High',st:'To apply',m:['n8n is the main tool','Values process documentation'],g:['New industry'],f:[],r:'Hands-on role with a lot of autonomy.'},
+{id:'a3',score:78,cat:'Operations',t:'Revenue Operations Analyst',co:'Kiwa Pay',loc:'Barcelona',mode:'Hybrid',sal:'Not stated',net:null,src:'LinkedIn alert',ago:'yesterday',ats:'Ashby',fill:'High',st:'To apply',m:['Weekly reporting and Power BI','Process mapping'],g:['No Salesforce experience'],f:[],r:'Strong on analytics. The CRM is the main gap.'},
+{id:'a4',score:70,cat:'Product',t:'Junior Product Owner (AI)',co:'Cobalto Software',loc:'Barcelona',mode:'On-site',sal:'€36–40k',net:2430,src:'LinkedIn alert',ago:'yesterday',ats:'LinkedIn',fill:'Copy and paste',st:'Applied',m:['Writes EARS requirements'],g:['No formal PO experience','Salary at the low end'],f:[],r:'Interesting later on. Pay is tight.'},
+{id:'a5',score:66,cat:'Operations',t:'Business Analyst',co:'Grupo Almar',loc:'Sant Cugat',mode:'Hybrid',sal:'Not stated',net:null,src:'JSearch',ago:'2 days ago',ats:'Workday',fill:'Partial',st:'Interview',m:['SQL and root-cause analysis'],g:['SAP requested'],f:[],r:'Reasonable if SAP is not essential.'},
+{id:'a6',score:58,cat:'Customer success',t:'Customer Success Manager',co:'Fenna',loc:'Remote, Europe',mode:'Remote',sal:'€38k',net:2500,src:'Remotive',ago:'3 days ago',ats:'Workable',fill:'High',st:'Applied',m:['Support background with process work'],g:['Enterprise accounts'],f:[],r:'Fallback option with little automation.'},
+{id:'a7',score:47,cat:'Operations',t:'Process Improvement Analyst',co:'Hidra Energía',loc:'Tarragona',mode:'Hybrid',sal:'€30k',net:1980,src:'Arbeitnow',ago:'5 days ago',ats:'Company site',fill:'Partial',st:'Dropped',m:['Process mapping'],g:['Below minimum salary'],f:['Same post listed several times in 90 days'],r:'Dropped: low pay and a possible ghost job.'}];
+const STAGES=['To apply','Applied','Interview','Offer','Dropped'];
+const SOURCES=[['JSearch','ok',102],['Adzuna','ok',200],['Remotive','ok',13],['Arbeitnow','ok',600],['Jobicy','ok',100],['Gmail alerts','ok',94],['InfoJobs','off',0]];
+const NAV=[['today','Today'],['offers','Offers'],['applications','Applications'],['assistant','Assistant']];
+let sel='a1',cur='a1',filled=false;const f={q:'',min:0,cat:'All'};
+const $=s=>document.querySelector(s),byId=i=>JOBS.find(j=>j.id===i),net=n=>n?`€${n.toLocaleString('en-GB')}`:'–',level=s=>s>=75?'high':s>=50?'mid':'low';
+function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,3200)}
+function today(){const p=JOBS.filter(j=>j.st==='To apply').sort((a,b)=>b.score-a.score),n=s=>JOBS.filter(j=>j.st===s).length,total=SOURCES.reduce((a,s)=>a+s[2],0);
+return `<h1>Today</h1><p class="sub">${p.length} worth applying to · ${n('Applied')} applied · ${n('Interview')} interview · ${n('Offer')} offers</p><div class="two"><section><h2>Apply next</h2>${p.map(j=>`<div class="line"><span class="s ${level(j.score)}">${j.score}</span><div class="i">${j.t}<br><span class="dim">${j.co}, ${j.loc}</span></div><button class="btn" data-prep="${j.id}">Prepare</button></div>`).join('')}</section><section><h2>Last run</h2><table><tbody>${SOURCES.map(s=>`<tr><td>${s[0]}</td><td class="r ${s[1]==='ok'?'':'dim'}">${s[1]==='ok'?s[2]:'off'}</td></tr>`).join('')}</tbody></table><p class="dim" style="margin-top:8px">${total.toLocaleString('en-GB')} offers checked. Claude cost today $0.02.</p></section></div>`}
+function side(j){return `<aside class="side"><h2>${j.t}</h2><p class="co">${j.co}</p><dl><dt>Score</dt><dd class="${level(j.score)}"><b>${j.score}</b> / 100</dd><dt>Track</dt><dd>${j.cat}</dd><dt>Location</dt><dd>${j.loc} (${j.mode})</dd><dt>Salary</dt><dd>${j.sal}</dd><dt>Net/month</dt><dd>${net(j.net)}</dd><dt>Source</dt><dd>${j.src}, ${j.ago}</dd><dt>Autofill</dt><dd>${j.fill} (${j.ats})</dd></dl><p class="block">${j.r}</p><div class="block"><h2>Matches</h2><ul>${j.m.map(x=>`<li>${x}</li>`).join('')}</ul></div><div class="block"><h2>Gaps</h2><ul>${j.g.map(x=>`<li>${x}</li>`).join('')}</ul></div>${j.f.length?`<div class="block"><h2 class="mid">Warning</h2><ul>${j.f.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}<div class="acts"><button class="btn go" data-prep="${j.id}">Prepare application</button><button class="btn" data-drop="${j.id}">Drop</button></div></aside>`}
+function offers(){const q=f.q.toLowerCase(),L=JOBS.filter(j=>j.score>=f.min&&(f.cat==='All'||j.cat===f.cat)&&`${j.t} ${j.co} ${j.loc}`.toLowerCase().includes(q)).sort((a,b)=>b.score-a.score);if(L.length&&!L.find(j=>j.id===sel))sel=L[0].id;
+return `<h1>Offers</h1><p class="sub">${L.length} of ${JOBS.length}, best match first</p><div class="filters"><input type="search" id="q" aria-label="Search offers" placeholder="Search role, company or city" value="${f.q}"><select id="cat" aria-label="Track">${['All','AI automation','Operations','Customer success','Product'].map(c=>`<option ${c===f.cat?'selected':''}>${c}</option>`).join('')}</select><label>Minimum <input id="min" type="range" min="0" max="90" step="5" value="${f.min}"> <span>${f.min}</span></label></div>${L.length?`<div class="two"><div class="scroll"><table><thead><tr><th>Score</th><th>Role</th><th class="hide">Location</th><th class="r hide">Net/month</th><th>Status</th></tr></thead><tbody>${L.map(j=>`<tr class="row" data-sel="${j.id}" aria-selected="${j.id===sel}" tabindex="0"><td class="score ${level(j.score)}">${j.score}</td><td>${j.t}<br><span class="dim">${j.co}</span></td><td class="hide">${j.loc}</td><td class="r hide">${net(j.net)}</td><td>${j.st}</td></tr>`).join('')}</tbody></table></div>${side(byId(sel))}</div>`:'<p class="dim">Nothing matches. Lower the minimum score or change the track.</p>'}`}
+function apps(){return `<h1>Applications</h1><p class="sub">Change a status and it is saved to the tracker sheet.</p>${STAGES.map(s=>{const L=JOBS.filter(j=>j.st===s).sort((a,b)=>b.score-a.score);return `<section class="group"><h2>${s} (${L.length})</h2>${L.length?`<div class="scroll"><table><tbody>${L.map(j=>`<tr><td class="score ${level(j.score)}">${j.score}</td><td>${j.t}<br><span class="dim">${j.co}</span></td><td class="r"><select aria-label="Status of ${j.t}" data-move="${j.id}">${STAGES.map(x=>`<option ${x===s?'selected':''}>${x}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`:'<p class="dim">None</p>'}</section>`}).join('')}`}
+function assistant(){const j=byId(cur),R=filled,letter=`I have spent over three years improving operations with data. In my last role I built a prototype with n8n and Claude that classified incidents and alerted the on-call team. I would like to bring that to ${j.co}.`;
+const fld=(id,l,v,src)=>`<div class="fld"><div class="l"><label for="${id}">${l}</label>${R?`<span>${src}</span>`:''}</div>${src==='draft to review'?`<textarea id="${id}">${R?v:''}</textarea>`:`<input id="${id}" value="${R?v:''}">`}</div>`;
+const ask=(id,l,o)=>`<div class="fld ${R?'ask':''}"><div class="l"><label for="${id}">${l}</label>${R?'<span>your call</span>':''}</div><select id="${id}" data-ask><option value="">Choose</option>${o.map(x=>`<option>${x}</option>`).join('')}</select></div>`;
+return `<h1>Assistant</h1><p class="sub">${j.t}, ${j.co} · ${j.ats}, autofill ${j.fill.toLowerCase()}</p><div class="filters"><select id="pick" aria-label="Offer">${JOBS.filter(x=>x.st!=='Dropped').map(x=>`<option value="${x.id}" ${x.id===cur?'selected':''}>${x.score} ${x.t}, ${x.co}</option>`).join('')}</select><button class="btn" id="fill">${R?'Fill again':'Fill form'}</button></div><div class="two"><section><div class="form">${fld('name','Full name','Alex Example','from profile')}${fld('mail','Email','alex@example.test','from profile')}${fld('tel','Phone','+34 600 000 000','from profile')}${fld('why','Why do you want to work here?',letter,'draft to review')}${ask('perm','Do you have EU work authorization?',['Yes','No'])}${ask('sal','Salary expectation',['€40–45k','€45–50k','Prefer to discuss'])}</div><div class="foot"><span class="dim">Nothing is submitted for you. You review and send it on the employer's site.</span><button class="btn go" id="open" ${R?'':'disabled'}>Open form</button></div></section><aside><h2>CV for this role</h2><p class="block">Selects and reorders lines from the base CV. It does not add experience.</p><h2>Moved to the top</h2><ul class="block"><li>n8n and Claude triage prototype</li><li>SLA reporting across service queues</li></ul><div class="acts"><button class="btn" data-demo="Opens the PDF in the real app.">CV (PDF)</button><button class="btn" data-demo="Opens the cover letter in the real app.">Cover letter</button></div></aside></div>`}
+const VIEWS={today,offers,applications:apps,assistant};
+const route=()=>VIEWS[location.hash.slice(1)]?location.hash.slice(1):'today';
+function paint(){const h=route();$('#nav').innerHTML=NAV.map(([k,l])=>`<button data-go="${k}" ${k===h?'aria-current="page"':''}>${l}</button>`).join('');$('#view').innerHTML=VIEWS[h]();wire()}
+function go(h){if(location.hash==='#'+h)paint();else location.hash=h}
+function move(id,s){const j=byId(id);if(j&&j.st!==s){j.st=s;paint();toast(`${j.t}: ${s}`)}}
+function wire(){const q=$('#q');if(q){q.oninput=()=>{f.q=q.value;const p=q.selectionStart;paint();const n=$('#q');n.focus();n.setSelectionRange(p,p)};$('#cat').onchange=e=>{f.cat=e.target.value;paint()};$('#min').oninput=e=>{f.min=+e.target.value;paint();$('#min').focus()}}
+if($('#pick'))$('#pick').onchange=e=>{cur=e.target.value;filled=false;paint()};
+if($('#fill'))$('#fill').onclick=()=>{filled=true;paint();toast('Filled. Two questions are left for you.')};
+if($('#open'))$('#open').onclick=()=>{const n=[...document.querySelectorAll('[data-ask]')].filter(x=>!x.value);if(n.length){toast('Answer the questions marked "your call" first.');n[0].focus();return}toast("The real app opens the employer's form here.")};
+document.querySelectorAll('[data-move]').forEach(s=>s.onchange=()=>move(s.dataset.move,s.value));
+document.querySelectorAll('tr.row').forEach(r=>r.onkeydown=e=>{if(e.key==='Enter'){sel=r.dataset.sel;paint()}})}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-go],[data-prep],[data-sel],[data-demo],[data-drop]');if(!t)return;const d=t.dataset;if(d.go)go(d.go);else if(d.prep){cur=d.prep;filled=false;go('assistant')}else if(d.sel){sel=d.sel;paint()}else if(d.demo)toast(d.demo);else if(d.drop)move(d.drop,'Dropped')});
+window.addEventListener('hashchange',paint);paint();
+</script>
+</body>
+</html>

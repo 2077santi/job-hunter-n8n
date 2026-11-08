@@ -1,1 +1,1 @@
-id,fecha_detectada,score,categoria,titulo,empresa,ubicacion,modalidad,salario_publicado,salario_estimado_neto_mes,idioma,fecha_publicacion,fuente,url,motivos_match,gaps,red_flags,resumen,estado,fecha_postulacion,fecha_respuesta,notas,clave_dedupe
+id,fecha_detectada,score,categoria,titulo,empresa,ubicacion,modalidad,salario_publicado,salario_estimado_neto_mes,idioma,fecha_publicacion,fuente,url,motivos_match,gaps,red_flags,resumen,estado,fecha_postulacion,fecha_respuesta,notas,clave_dedupe,descripcion

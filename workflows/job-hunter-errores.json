@@ -2,7 +2,7 @@
   "name": "Job hunter · errores",
   "nodes": [
     {
-      "id": "a5afe415-7276-495f-a387-d4b5a19ba47d",
+      "id": "054e4b93-6e2e-4e93-b937-bb65f90d79b8",
       "name": "Error Trigger",
       "type": "n8n-nodes-base.errorTrigger",
       "typeVersion": 1,
@@ -13,7 +13,7 @@
       "parameters": {}
     },
     {
-      "id": "0318f367-e932-4b80-98f6-839ab793ec9a",
+      "id": "1145241a-2a08-43de-8829-f15f1c42e0a2",
       "name": "Mensaje",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -26,7 +26,7 @@
       }
     },
     {
-      "id": "4dab64ed-6253-4415-ba01-7a1d7bd5175b",
+      "id": "8ac7ee4a-00b4-4bb7-bf49-5155112859df",
       "name": "Telegram",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,

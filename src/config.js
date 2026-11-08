@@ -22,24 +22,30 @@ const CONFIG = {
   APIFY_INFOJOBS_ACTOR: '', // formato usuario~actor
   APIFY_INFOJOBS_INPUT: { keyword: 'analista operaciones automatización', province: 'barcelona', maxItems: 30 },
 
-  // 6 queries de JSearch: 3 por ejecución (mañana / tarde) -> 180/mes
-  JSEARCH_QUERIES: {
-    manana: [
-      { query: 'AI automation specialist OR n8n OR automatización IA in Barcelona, Spain' },
-      { query: 'operations analyst OR business analyst OR process improvement in Barcelona, Spain' },
-      { query: 'customer success manager in Barcelona, Spain' },
-    ],
-    tarde: [
-      { query: 'AI automation OR workflow automation OR automatización remote Spain', work_from_home: true },
-      { query: 'analista de operaciones OR analista de negocio OR mejora de procesos Barcelona' },
-      { query: 'product owner junior OR IT business partner OR automatització in Barcelona, Spain' },
-    ],
-  },
+  JSEARCH_POR_EJECUCION: 3, // 2 ejecuciones al día -> unas 180 peticiones al mes
+  // JSearch devuelve 0 con consultas largas de muchos OR: una búsqueda concreta por petición, en rotación.
+  JSEARCH_QUERIES: [
+    { query: 'AI automation specialist in Barcelona, Spain' },
+    { query: 'support operations analyst in Barcelona, Spain' },
+    { query: 'business operations analyst in Barcelona, Spain' },
+    { query: 'workflow automation in Barcelona, Spain' },
+    { query: 'data quality analyst in Barcelona, Spain' },
+    { query: 'process improvement analyst in Barcelona, Spain' },
+    { query: 'AI operations analyst in Barcelona, Spain' },
+    { query: 'customer experience operations in Barcelona, Spain' },
+    { query: 'business analyst in Barcelona, Spain' },
+    { query: 'automation specialist in Spain', work_from_home: true },
+    { query: 'data analyst Power BI in Barcelona, Spain' },
+    { query: 'analista de operaciones in Barcelona, Spain' },
+    { query: 'workflow automation in Spain', work_from_home: true },
+    { query: 'customer success manager in Barcelona, Spain' },
+    { query: 'product owner junior in Barcelona, Spain' },
+  ],
   ADZUNA_QUERIES: [
-    { where: 'Barcelona', what_or: 'automation automatización automatització n8n zapier rpa llm workflow' },
-    { where: 'Barcelona', what_or: 'operations analyst analista operaciones business negocio procesos improvement' },
-    { where: 'Barcelona', what_or: 'customer success product owner business partner' },
-    { what: 'remoto', what_or: 'automatización automation n8n analista operaciones business success' },
+    { where: 'Barcelona', what_or: 'automation automatización automatització n8n zapier rpa llm workflow genai' },
+    { where: 'Barcelona', what_or: 'operations analyst analista operaciones business negocio procesos improvement reporting' },
+    { where: 'Barcelona', what_or: 'workforce wfm trust safety evaluation cx success owner' },
+    { what: 'remoto', what_or: 'automatización automation n8n llm analista operaciones business success' },
   ],
   INFOJOBS_QUERIES: ['automatización', 'analista de operaciones', 'business analyst', 'customer success'],
 
@@ -53,6 +59,9 @@ const CONFIG = {
           "analista d'operacions", 'analista de negoci', 'millora de processos'],
     '3': ['customer success', 'customer success manager', 'onboarding specialist', 'implementation specialist',
           'éxito del cliente', 'gestor de clientes', "èxit del client"],
+    '4': ['AI operations', 'AI ops', 'LLM evaluation', 'AI evaluation', 'AI quality', 'data quality analyst', 'AI data operations', 'data annotation quality', 'operaciones de IA', 'calidad de datos', 'operacions d\'IA'],
+    '5': ['support operations', 'CX operations', 'customer experience operations', 'contact center analyst', 'workforce analyst', 'WFM', 'trust and safety operations', 'operaciones de soporte', 'planificación de contact center'],
+    '6': ['data analyst', 'BI analyst', 'reporting analyst', 'Power BI', 'analista de datos', 'analista BI', 'analista de dades'],
     'bonus': ['product owner', 'junior product owner', 'IT business partner', 'propietario de producto', 'responsable de producto'],
   },
 
@@ -63,6 +72,8 @@ const CONFIG = {
     'proces', 'mejora continua', 'millora', 'customer success', 'client success', '\\bcsm\\b', 'success manager',
     'onboarding', 'implementation', 'implantacion', 'product owner', 'business partner', 'revops', 'customer experience',
     '\\bcx\\b', 'transformation', 'transformacion', 'efficiency', 'eficiencia',
+    'evaluat', 'evaluac', 'data quality', 'calidad de datos', 'ai quality', 'quality analyst', 'analista de calidad', 'trust (and|&) safety', 'trust ?& ?safety',
+    'workforce', '\\bwfm\\b', 'contact cent', 'support operation', 'reporting', 'business intelligence', '\\bbi\\b', 'program (analyst|coordinator|specialist)',
   ],
   // Fuera siempre (título)
   EXCLUIR_TITULO: [
@@ -81,7 +92,7 @@ const CONFIG = {
   ANIOS_EXPERIENCIA_MAX: 7, // descarta si piden 8+ años
 
   CV_PERFIL: `Alex Ejemplo — candidato ficticio de demostración. Sustituye este texto por tu CV.
-Busca (prioridad): 1) AI Automation Specialist; 2) Operations / Business Analyst; 3) Customer Success.
+Busca (prioridad): 1) AI Automation Specialist; 2) AI Operations; 3) Operations / Business Analyst; 4) Support/CX Operations; 5) Data/BI Analyst; 6) Customer Success.
 Ubicación y salario: ajusta los filtros de esta configuración.
 Experiencia (~3 años): analista de operaciones en una empresa ficticia; dashboards, SQL y automatizaciones con n8n y APIs de LLM.
 Stack: n8n, Make, Zapier, SQL, Python, Power BI, Google Sheets.

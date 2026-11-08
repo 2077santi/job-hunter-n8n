@@ -2,7 +2,7 @@
 const c = $('Config').first().json;
 const prep = $('Preparar scoring').all().map((i) => i.json);
 const hoy = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Madrid' }).slice(0, 16);
-const CAT = { '1': '1 · Automatización IA', '2': '2 · Operations/BA', '3': '3 · Customer Success', bonus: 'Bonus · PO/IT BP', ninguna: 'Ninguna' };
+const CAT = { '1': '1 · Automatización IA', '2': '2 · Operations/BA', '3': '3 · Customer Success', '4': '4 · AI Ops/Evaluación', '5': '5 · CX Ops/T&S', '6': '6 · Datos/BI', bonus: 'Bonus · PO/IT BP', ninguna: 'Ninguna' };
 const filas = [];
 let errores = [], tin = 0, tout = 0, tcache = 0;
 $input.all().forEach(({ json: r }, i) => {
@@ -41,6 +41,7 @@ $input.all().forEach(({ json: r }, i) => {
     fecha_respuesta: '',
     notas: descartada ? 'Auto: salario por debajo del mínimo' : '',
     clave_dedupe: o.clave_dedupe,
+    descripcion: o.descripcion ?? '',
   });
 });
 // Coste Haiku 5.5: 0,10 $/MTok entrada, 0,50 $/MTok salida, lectura de caché 0,01 $/MTok
